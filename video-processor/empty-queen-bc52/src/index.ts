@@ -1,4 +1,5 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg/dist/esm.js'
+// @ts-ignore
+import { FFmpeg } from '@ffmpeg/ffmpeg'
 
 interface Env {
   SUPABASE_URL: string
@@ -17,7 +18,10 @@ export default {
 
       // Initialize FFmpeg
       const ffmpeg = new FFmpeg()
-      await ffmpeg.load()
+      await ffmpeg.load({
+        coreURL: await fetch('https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js').then(r => r.url),
+        wasmURL: await fetch('https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm').then(r => r.url)
+      })
 
       // Get video from Supabase
       const response = await fetch(

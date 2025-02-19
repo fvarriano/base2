@@ -35,17 +35,8 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
 
         if (videoError) throw videoError
 
-        // Trigger video processing
-        await fetch(process.env.NEXT_PUBLIC_CLOUDFLARE_WORKER_URL!, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            videoId: data.path.split('/')[1], // Extract video ID from path
-            storagePath: data.path
-          })
-        })
+        // Temporarily skip worker call
+        console.log('Video uploaded:', data.path)
       }
     } catch (error) {
       console.error('Error uploading video:', error)
