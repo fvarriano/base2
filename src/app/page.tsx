@@ -9,7 +9,7 @@ interface Project {
   id: string
   title: string
   description: string | null
-  created_at: string
+  created_at: string | null
 }
 
 export default function Home() {
@@ -24,7 +24,9 @@ export default function Home() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setProjects(data || [])
+      
+      const typedData = (data || []) as Project[]
+      setProjects(typedData)
     } catch (error) {
       console.error('Error fetching projects:', error)
     } finally {
