@@ -1,4 +1,4 @@
-import { FFmpeg } from '@ffmpeg/ffmpeg'
+import { FFmpeg } from '@ffmpeg/ffmpeg/dist/esm.js'
 
 interface Env {
   SUPABASE_URL: string
@@ -74,11 +74,12 @@ export default {
       }), {
         headers: { 'Content-Type': 'application/json' }
       })
-
     } catch (error) {
+      console.error('Error processing video:', error)
       return new Response(JSON.stringify({ 
+        success: false,
         error: error.message 
-      }), { 
+      }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       })
