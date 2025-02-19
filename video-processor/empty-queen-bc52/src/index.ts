@@ -6,6 +6,11 @@ interface Env {
   SUPABASE_SERVICE_KEY: string
 }
 
+interface FFmpegFile {
+  name: string
+  // Add other properties if needed
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     // Only allow POST requests
@@ -49,8 +54,8 @@ export default {
         'frame_%d.jpg'
       ])
 
-      // Get list of generated frames
-      const frames = await ffmpeg.listDir('/')
+      // Get list of generated frames with proper typing
+      const frames: FFmpegFile[] = await ffmpeg.listDir('/')
       const frameFiles = frames.filter(f => f.name.startsWith('frame_'))
 
       // Upload frames to Supabase
