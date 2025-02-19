@@ -1,24 +1,28 @@
 import Link from 'next/link'
 
 interface ProjectCardProps {
-  id: string
-  title: string
-  description: string | null
-  createdAt: string
+  project: {
+    id: string
+    title: string
+    description: string | null
+    created_at: string | null
+  }
 }
 
-export function ProjectCard({ id, title, description, createdAt }: ProjectCardProps) {
+export function ProjectCard({ project }: ProjectCardProps) {
   return (
-    <Link href={`/projects/${id}`}>
-      <div className="card p-6 rounded-lg hover:scale-[1.01] transition-all">
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        {description && (
-          <p className="mt-2 text-sm text-gray-600">{description}</p>
+    <div className="p-4 border rounded-lg shadow hover:shadow-md transition-shadow">
+      <Link href={`/projects/${project.id}`}>
+        <h3 className="text-lg font-semibold">{project.title}</h3>
+        {project.description && (
+          <p className="mt-2 text-gray-600">{project.description}</p>
         )}
-        <div className="mt-4 text-xs text-gray-500">
-          Created {new Date(createdAt).toLocaleDateString()}
-        </div>
-      </div>
-    </Link>
+        {project.created_at && (
+          <p className="mt-2 text-sm text-gray-500">
+            Created: {new Date(project.created_at).toLocaleDateString()}
+          </p>
+        )}
+      </Link>
+    </div>
   )
 } 
