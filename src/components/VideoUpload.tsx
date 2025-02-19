@@ -15,7 +15,6 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
     
     try {
       for (const file of e.target.files) {
-        // Upload video to Supabase storage
         const { data, error } = await supabase
           .storage
           .from('videos')
@@ -23,20 +22,16 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
           
         if (error) throw error
 
-        // Save video reference to database
         const { error: videoError } = await supabase
           .from('videos')
           .insert({
             project_id: projectId,
             filename: file.name,
             storage_path: data.path,
-            status: 'pending'
+            status: 'uploaded'
           })
 
         if (videoError) throw videoError
-
-        // Temporarily skip worker call
-        console.log('Video uploaded:', data.path)
       }
     } catch (error) {
       console.error('Error uploading video:', error)
