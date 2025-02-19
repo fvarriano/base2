@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Video } from '@/lib/types'
 
 interface VideoUploadProps {
   projectId: string
@@ -25,7 +24,7 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
         if (error) throw error
 
         // Save video reference to database
-        const { data: videoData, error: videoError } = await supabase
+        const { error: videoError } = await supabase
           .from('videos')
           .insert({
             project_id: projectId,
@@ -33,8 +32,6 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
             storage_path: data.path,
             status: 'pending'
           })
-          .select()
-          .single()
 
         if (videoError) throw videoError
 
@@ -45,7 +42,7 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            videoId: videoData.id,
+            videoId: data.path.split('/')[1], // Extract video ID from path
             storagePath: data.path
           })
         })
