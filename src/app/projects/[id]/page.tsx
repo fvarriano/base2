@@ -20,11 +20,13 @@ export default function ProjectPage() {
 
   useEffect(() => {
     const fetchProject = async () => {
+      if (!params.id) return
+
       try {
         const { data, error } = await supabase
           .from('projects')
           .select('*')
-          .eq('id', params.id)
+          .eq('id', params.id.toString())
           .single()
 
         if (error) throw error
