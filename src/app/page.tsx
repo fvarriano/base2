@@ -24,9 +24,7 @@ export default function Home() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      
-      const typedData = (data || []) as Project[]
-      setProjects(typedData)
+      setProjects(data || [])
     } catch (error) {
       console.error('Error fetching projects:', error)
     } finally {
@@ -38,32 +36,20 @@ export default function Home() {
     fetchProjects()
   }, [])
 
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Projects</h1>
-        <CreateProject onProjectCreated={fetchProjects} />
-      </div>
+  if (loading) return <div>Loading...</div>
 
-      {loading ? (
-        <div className="text-center text-gray-600">Loading projects...</div>
-      ) : projects.length === 0 ? (
-        <div className="text-center text-gray-600">
-          No projects yet. Create your first project!
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              id={project.id}
-              title={project.title}
-              description={project.description}
-              createdAt={project.created_at}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+  return (
+    <main className="max-w-4xl mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Projects</h1>
+      <CreateProject onProjectCreated={fetchProjects} />
+      <div className="mt-8 grid gap-4 grid-cols-1 md:grid-cols-2">
+        {projects.map((project) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+          />
+        ))}
+      </div>
+    </main>
   )
 }
