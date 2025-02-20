@@ -1,0 +1,27 @@
+{
+	"name": "lucky-fire-7d58",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest",
+		"cf-typegen": "wrangler types",
+		"build": "webpack --config webpack.config.js"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.6.4",
+		"@cloudflare/workers-types": "^4.20250214.0",
+		"copy-webpack-plugin": "^11.0.0",
+		"ts-loader": "^9.5.2",
+		"typescript": "^5.5.2",
+		"vitest": "~2.1.9",
+		"webpack": "^5.90.1",
+		"webpack-cli": "^5.1.4",
+		"wrangler": "^3.109.2"
+	},
+	"dependencies": {
+		"@supabase/supabase-js": "^2.48.1"
+	}
+}
