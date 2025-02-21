@@ -18,6 +18,8 @@ interface FFmpegFileInfo {
 export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [status, setStatus] = useState<string>('')
+  const [detailedStatus, setDetailedStatus] = useState<string>('')
+  const [progress, setProgress] = useState<{current: number, total: number} | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
   const [ffmpeg] = useState(() => new FFmpeg())
 
@@ -38,13 +40,16 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
     if (!e.target.files || e.target.files.length === 0) return
     
     setUploading(true)
-    setStatus('Initializing FFmpeg...')
+    setStatus('Initializing...')
+    setDetailedStatus('Setting up FFmpeg for video processing')
+    setProgress(null)
     setCurrentVideoId(null)
     
     try {
       // Initialize FFmpeg
       if (!ffmpeg.loaded) {
-        console.log('Loading FFmpeg...')
+        setStatus('Loading FFmpeg...')
+        setDetailedStatus('This might take a few moments on first upload')
         try {
           await ffmpeg.load({
             coreURL: '/ffmpeg-core.js',
@@ -52,12 +57,12 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
             workerURL: '/ffmpeg-core.worker.js',
             log: true
           })
-          console.log('FFmpeg loaded successfully')
+          setDetailedStatus('FFmpeg loaded successfully')
 
           // Test FFmpeg is working
           try {
             await ffmpeg.exec(['-version'])
-            console.log('FFmpeg is ready')
+            setDetailedStatus('FFmpeg is ready and working')
           } catch (versionError) {
             console.error('FFmpeg version check failed:', versionError)
             throw new Error('FFmpeg initialization failed')
@@ -70,8 +75,9 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
       }
 
       for (const file of e.target.files) {
-        console.log('Processing file:', file.name)
-        setStatus('Processing video...')
+        const fileSizeMB = file.size / (1024 * 1024)
+        setStatus(`Processing video (${fileSizeMB.toFixed(1)} MB)...`)
+        setDetailedStatus(`Starting to process ${file.name}`)
         
         // Create a unique filename with timestamp
         const timestamp = new Date().getTime()
@@ -81,6 +87,7 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
         
         // Upload to Supabase
         setStatus('Uploading video to storage...')
+        setDetailedStatus(`Uploading ${file.name} to cloud storage`)
         console.log('Uploading to Supabase...')
         const { data: uploadData, error: uploadError } = await supabase
           .storage
@@ -88,9 +95,10 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
           .upload(`${projectId}/${uniqueFilename}`, file)
           
         if (uploadError) throw uploadError
-        console.log('Upload successful')
+        setDetailedStatus('Video upload successful')
 
         // Create video record
+        setDetailedStatus('Creating video record in database')
         console.log('Creating video record...')
         const { data: videoData, error: videoError } = await supabase
           .from('videos')
@@ -105,28 +113,31 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
           .single()
 
         if (videoError) throw videoError
-        console.log('Video record created')
+        setDetailedStatus('Video record created successfully')
 
         // Store the video ID for showing frames later
         setCurrentVideoId(videoData.id)
 
         // Process video with FFmpeg
-        setStatus('Loading video into FFmpeg...')
+        setStatus('Processing video frames...')
+        setDetailedStatus('Loading video into FFmpeg for frame extraction')
         console.log('Writing video to FFmpeg filesystem...')
         
         try {
           // Write video to FFmpeg filesystem
           const videoBuffer = await fetchFile(file)
           await ffmpeg.writeFile('input.mp4', videoBuffer)
-          console.log('Video written to FFmpeg filesystem')
+          setDetailedStatus('Video loaded into FFmpeg successfully')
 
           // Extract frames (1 frame per second)
           setStatus('Extracting frames...')
+          setDetailedStatus('Analyzing video information')
           console.log('Getting video information...')
           await ffmpeg.exec(['-i', 'input.mp4'])
-          console.log('Video info command completed')
+          setDetailedStatus('Video analysis complete')
 
           // Extract frames with a more reliable command
+          setDetailedStatus('Starting frame extraction (this may take a while for larger videos)')
           console.log('Starting frame extraction...')
           await ffmpeg.exec([
             '-i', 'input.mp4',
@@ -137,7 +148,7 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
             '-y',
             'frame-%03d.jpg'
           ])
-          console.log('Frame extraction command completed')
+          setDetailedStatus('Frame extraction completed')
 
           // Verify the frames were created
           const files = await ffmpeg.listDir('/')
@@ -154,11 +165,14 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
           }
 
           // Upload frames
-          setStatus(`Uploading ${frameFiles.length} frames...`)
+          setStatus(`Uploading frames...`)
+          setProgress({ current: 0, total: frameFiles.length })
           
           for (let i = 0; i < frameFiles.length; i++) {
             const frameFile = frameFiles[i]
-            console.log(`Processing frame ${i + 1}/${frameFiles.length}`)
+            setDetailedStatus(`Processing frame ${i + 1} of ${frameFiles.length}`)
+            setProgress({ current: i + 1, total: frameFiles.length })
+            
             const frameData = await ffmpeg.readFile(frameFile.name)
             const frameBlob = new Blob([frameData], { type: 'image/jpeg' })
 
@@ -224,10 +238,11 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
             }
             
             console.log(`Frame ${i + 1} processed successfully`);
-            setStatus(`Uploaded frame ${i + 1}/${frameFiles.length}`);
           }
 
           // Update video status to completed
+          setStatus('Finalizing...')
+          setDetailedStatus('Updating video status')
           console.log('Updating video status to completed...')
           const { error: updateError } = await supabase
             .from('videos')
@@ -241,9 +256,10 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
             console.error('Error updating video status:', updateError)
             throw updateError
           }
-          console.log('Video processing completed successfully')
-
+          
           setStatus('Processing completed!')
+          setDetailedStatus('Video processing completed successfully')
+          setProgress(null)
           
           // Notify parent component that processing is complete
           onVideoProcessed?.(videoData.id)
@@ -256,6 +272,8 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
     } catch (error) {
       console.error('Error:', error)
       setStatus(error instanceof Error ? error.message : 'Error processing video')
+      setDetailedStatus('An error occurred during processing')
+      setProgress(null)
       
       // Update video status to error if we have a video ID
       if (currentVideoId) {
@@ -290,7 +308,33 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
             hover:file:bg-blue-100"
         />
         {status && (
-          <p className="mt-2 text-sm text-gray-500">{status}</p>
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center">
+              {uploading && (
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              <p className="text-sm font-medium text-gray-900">{status}</p>
+            </div>
+            {detailedStatus && (
+              <p className="text-sm text-gray-500">{detailedStatus}</p>
+            )}
+            {progress && (
+              <div className="relative pt-1">
+                <div className="overflow-hidden h-2 text-xs flex rounded bg-blue-100">
+                  <div 
+                    style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-300"
+                  ></div>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {progress.current} of {progress.total} frames processed
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
       
