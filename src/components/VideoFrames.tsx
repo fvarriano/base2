@@ -32,17 +32,25 @@ interface FrameAnnotations {
 interface Video {
   id: string
   display_name: string
-  status: string
+  status: 'processing' | 'completed' | 'error'
   created_at: string
+}
+
+interface VideoUpdate {
+  display_name?: string
+  status?: 'processing' | 'completed' | 'error'
+  updated_at?: string
 }
 
 export function VideoFrames({ videoId }: VideoFramesProps) {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [videoStatus, setVideoStatus] = useState<string>('')
+  const [videoStatus, setVideoStatus] = useState<'processing' | 'completed' | 'error'>('processing')
   const [videoDetails, setVideoDetails] = useState<Video | null>(null)
   const [annotations, setAnnotations] = useState<FrameAnnotations>({})
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [frameGroupTitle, setFrameGroupTitle] = useState('Extracted Frames')
 
   // Load annotations for all frames
   const loadAnnotations = useCallback(async (frames: Frame[]) => {
@@ -212,6 +220,29 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
     }
   }, [])
 
+  // Add function to handle title update
+  const handleTitleUpdate = async (newTitle: string) => {
+    try {
+      const updates: VideoUpdate = {
+        display_name: newTitle,
+        updated_at: new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('videos')
+        .update(updates)
+        .eq('id', videoId)
+
+      if (error) throw error
+
+      // Update local state
+      setVideoDetails(prev => prev ? { ...prev, display_name: newTitle } : null)
+      setIsEditingTitle(false)
+    } catch (err) {
+      console.error('Error updating title:', err)
+    }
+  }
+
   useEffect(() => {
     let isSubscribed = true
 
@@ -227,8 +258,18 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
         if (videoError) throw videoError
         if (!isSubscribed) return
         
-        setVideoStatus(videoData.status || '')
-        setVideoDetails(videoData)
+        // Ensure status is one of the valid values
+        const status = videoData.status === 'completed' || videoData.status === 'error' 
+          ? videoData.status 
+          : 'processing'
+        
+        setVideoStatus(status)
+        setVideoDetails({
+          id: videoData.id,
+          display_name: videoData.display_name,
+          status,
+          created_at: videoData.created_at
+        })
 
         // Get frames from database
         const { data: frameData, error: frameError } = await supabase
@@ -291,29 +332,31 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
 
   return (
     <div className="space-y-6">
-      {/* Video Details Section */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex justify-between items-start mb-2">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {videoDetails?.display_name || 'Video Processing'}
-            </h2>
-            <p className="text-sm text-gray-500">
-              {videoDetails?.created_at && 
-                `Uploaded ${new Date(videoDetails.created_at).toLocaleString()}`
-              }
-            </p>
+      {/* Only show video details section while processing */}
+      {videoStatus === 'processing' && (
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {videoDetails?.display_name || 'Video Processing'}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {videoDetails?.created_at && 
+                  `Uploaded ${new Date(videoDetails.created_at).toLocaleString()}`
+                }
+              </p>
+            </div>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
+              videoStatus === 'completed' ? 'bg-green-100 text-green-800' :
+              videoStatus === 'error' ? 'bg-red-100 text-red-800' :
+              videoStatus === 'processing' ? 'bg-blue-100 text-blue-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {videoStatus}
+            </span>
           </div>
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
-            videoStatus === 'completed' ? 'bg-green-100 text-green-800' :
-            videoStatus === 'error' ? 'bg-red-100 text-red-800' :
-            videoStatus === 'processing' ? 'bg-blue-100 text-blue-800' :
-            'bg-gray-100 text-gray-800'
-          }`}>
-            {videoStatus}
-          </span>
         </div>
-      </div>
+      )}
 
       {/* Frames Section */}
       {frames.length === 0 ? (
@@ -325,7 +368,60 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow p-4">
-          <h2 className="text-lg font-semibold mb-4">Extracted Frames</h2>
+          {/* Editable Title */}
+          <div className="flex items-center justify-between mb-4">
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={frameGroupTitle}
+                  onChange={(e) => setFrameGroupTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleTitleUpdate(frameGroupTitle)
+                    } else if (e.key === 'Escape') {
+                      setIsEditingTitle(false)
+                      setFrameGroupTitle('Extracted Frames') // Reset to default if cancelled
+                    }
+                  }}
+                  className="text-lg font-semibold px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+                <button
+                  onClick={() => handleTitleUpdate(frameGroupTitle)}
+                  className="p-1 text-blue-600 hover:text-blue-800"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsEditingTitle(false)
+                    setFrameGroupTitle('Extracted Frames') // Reset to default if cancelled
+                  }}
+                  className="p-1 text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-gray-900">{frameGroupTitle}</h2>
+                <button
+                  onClick={() => setIsEditingTitle(true)}
+                  className="p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="relative">
             {/* Left shadow gradient */}
             <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-10" />
