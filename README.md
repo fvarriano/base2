@@ -116,6 +116,130 @@ wrangler deploy
 - Check worker execution logs in Cloudflare Dashboard
 - Periodically clean up old videos/frames
 
+### 8. Future Backend Processing Architecture
+
+To enable background processing and handle larger videos more efficiently, the following architecture is recommended:
+
+#### Components
+
+1. **Upload Service**
+   - Direct video upload to Supabase Storage
+   - Create initial video record with 'pending' status
+   - Send message to processing queue
+
+2. **Processing Queue**
+   - AWS SQS or similar message queue
+   - Store video metadata and processing parameters
+   - Enable retry mechanisms and dead letter queues
+
+3. **Worker Service**
+   - AWS Lambda or dedicated server with FFmpeg
+   - Pull messages from queue
+   - Process videos using native FFmpeg
+   - Update progress in database
+   - Store frames in Supabase Storage
+
+4. **Status Updates**
+   - Real-time updates via Supabase subscriptions
+   - Progress tracking in database
+   - Error handling and retry logic
+
+#### Implementation Steps
+
+1. **Set Up Infrastructure**
+   ```bash
+   # AWS Setup
+   aws configure
+   aws sqs create-queue --queue-name video-processing
+   aws lambda create-function --function-name video-processor
+   ```
+
+2. **Database Schema Updates**
+   ```sql
+   -- Add processing metadata
+   ALTER TABLE videos ADD COLUMN
+     processing_progress INTEGER,
+     processing_error TEXT,
+     worker_id TEXT,
+     started_at TIMESTAMPTZ,
+     completed_at TIMESTAMPTZ;
+   ```
+
+3. **Worker Implementation**
+   ```typescript
+   // Example Lambda function
+   export async function handler(event) {
+     const { videoId, projectId } = event
+     
+     // Update status
+     await supabase.from('videos')
+       .update({ 
+         status: 'processing',
+         worker_id: context.awsRequestId,
+         started_at: new Date()
+       })
+       .eq('id', videoId)
+     
+     try {
+       // Process video with native FFmpeg
+       // Extract and upload frames
+       // Update progress
+     } catch (error) {
+       // Handle errors
+     }
+   }
+   ```
+
+4. **Frontend Updates**
+   - Remove browser-based FFmpeg processing
+   - Add progress polling or real-time subscriptions
+   - Improve UX for background processing
+
+#### Benefits
+
+1. **Performance**
+   - Native FFmpeg performance (5-10x faster)
+   - No browser resource limitations
+   - Parallel processing of multiple videos
+
+2. **User Experience**
+   - Background processing
+   - No need to keep browser open
+   - Better progress tracking
+   - Handle larger videos (up to 5GB)
+
+3. **Reliability**
+   - Automatic retries
+   - Better error handling
+   - Processing queue management
+   - Resource scaling
+
+#### Cost Considerations
+
+1. **AWS Costs (estimated)**
+   - Lambda: ~$0.20 per 1000 videos
+   - SQS: ~$0.40 per 1M messages
+   - S3: ~$0.023 per GB/month
+
+2. **Alternatives**
+   - Digital Ocean Droplet: ~$5/month
+   - Cloudflare Workers: Free tier available
+   - Self-hosted solution
+
+#### Monitoring
+
+1. **CloudWatch Metrics**
+   - Processing time
+   - Error rates
+   - Queue length
+   - Resource usage
+
+2. **Alerts**
+   - Processing failures
+   - Queue backlog
+   - Resource constraints
+   - Cost thresholds
+
 ## Video Frame Persistence and Organization Plan
 
 ### Current Issues

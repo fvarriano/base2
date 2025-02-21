@@ -15,6 +15,12 @@ interface FFmpegFileInfo {
   isDir?: boolean;
 }
 
+interface ProcessingOptions {
+  maxFrames: number
+  frameInterval: number
+  quality: number
+}
+
 export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [status, setStatus] = useState<string>('')
@@ -22,6 +28,11 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
   const [progress, setProgress] = useState<{current: number, total: number} | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
   const [ffmpeg] = useState(() => new FFmpeg())
+  const [processingOptions, setProcessingOptions] = useState<ProcessingOptions>({
+    maxFrames: 60,      // Doubled from 30
+    frameInterval: 2,   // Extract a frame every N seconds
+    quality: 80        // JPEG quality (0-100)
+  })
 
   // Add navigation warning
   useEffect(() => {
@@ -50,6 +61,25 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
     return `${filename.split('.')[0]} - ${formattedDate}`
   }
 
+  const compressVideo = async (file: File): Promise<Blob> => {
+    setDetailedStatus('Compressing video for faster processing...')
+    
+    await ffmpeg.writeFile('input.mp4', await fetchFile(file))
+    
+    // Compress video with reasonable quality
+    await ffmpeg.exec([
+      '-i', 'input.mp4',
+      '-c:v', 'libx264',
+      '-crf', '28',        // Compression quality (23-28 is good)
+      '-preset', 'faster', // Faster encoding
+      '-y',
+      'compressed.mp4'
+    ])
+    
+    const compressedData = await ffmpeg.readFile('compressed.mp4')
+    return new Blob([compressedData], { type: 'video/mp4' })
+  }
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return
     
@@ -59,10 +89,22 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
     // Add size warning for larger videos
     if (fileSizeMB > 100) {
       if (!window.confirm(
-        `This video is ${fileSizeMB.toFixed(1)} MB. Processing large videos may take several minutes, ` +
-        `and you'll need to keep this tab open until processing completes. Continue?`
+        `This video is ${fileSizeMB.toFixed(1)} MB. Would you like to:\n\n` +
+        `1. Process with reduced quality (faster)\n` +
+        `2. Process in full quality (slower)\n\n` +
+        `Choose OK for reduced quality, Cancel for full quality.`
       )) {
-        return
+        setProcessingOptions({
+          maxFrames: 120,          // Doubled from 60
+          frameInterval: 1,
+          quality: 100
+        })
+      } else {
+        setProcessingOptions({
+          maxFrames: 60,           // Doubled from 30
+          frameInterval: 2,
+          quality: 80
+        })
       }
     }
     
@@ -101,14 +143,22 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
         }
       }
 
+      // Compress video if it's large
+      let processFile = file
+      if (fileSizeMB > 50) {
+        const compressedVideo = await compressVideo(file)
+        processFile = new File([compressedVideo], file.name, { type: 'video/mp4' })
+        setDetailedStatus('Video compressed successfully')
+      }
+
       // Upload to Supabase
       setStatus('Uploading video to storage...')
-      setDetailedStatus(`Uploading ${file.name} to cloud storage`)
+      setDetailedStatus(`Uploading ${processFile.name} to cloud storage`)
       console.log('Uploading to Supabase...')
       const { data: uploadData, error: uploadError } = await supabase
         .storage
         .from('videos')
-        .upload(`${projectId}/${file.name}`, file)
+        .upload(`${projectId}/${processFile.name}`, processFile)
         
       if (uploadError) throw uploadError
       setDetailedStatus('Video upload successful')
@@ -120,10 +170,10 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
         .from('videos')
         .insert({
           project_id: projectId,
-          filename: file.name,
+          filename: processFile.name,
           storage_path: uploadData.path,
           status: 'processing',
-          display_name: generateDefaultDisplayName(file.name)
+          display_name: generateDefaultDisplayName(processFile.name)
         })
         .select()
         .single()
@@ -140,26 +190,13 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
       console.log('Writing video to FFmpeg filesystem...')
       
       try {
-        // Write video to FFmpeg filesystem
-        const videoBuffer = await fetchFile(file)
-        await ffmpeg.writeFile('input.mp4', videoBuffer)
-        setDetailedStatus('Video loaded into FFmpeg successfully')
-
-        // Extract frames (1 frame per second)
-        setStatus('Extracting frames...')
-        setDetailedStatus('Analyzing video information')
-        console.log('Getting video information...')
-        await ffmpeg.exec(['-i', 'input.mp4'])
-        setDetailedStatus('Video analysis complete')
-
-        // Extract frames with a more reliable command
-        setDetailedStatus('Starting frame extraction (this may take a while for larger videos)')
-        console.log('Starting frame extraction...')
+        // Extract frames with optimized settings
+        setDetailedStatus('Starting optimized frame extraction')
         await ffmpeg.exec([
           '-i', 'input.mp4',
-          '-vf', 'fps=1',
-          '-start_number', '0',
-          '-vframes', '10',  // Limit to 10 frames for testing
+          '-vf', `fps=1/${processingOptions.frameInterval}`,  // Extract frames at interval
+          '-vframes', processingOptions.maxFrames.toString(),
+          '-q:v', Math.floor((100 - processingOptions.quality) / 5).toString(),  // Convert quality to FFmpeg scale
           '-f', 'image2',
           '-y',
           'frame-%03d.jpg'
@@ -322,9 +359,16 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
             file:bg-blue-50 file:text-blue-700
             hover:file:bg-blue-100"
         />
-        <p className="mt-2 text-xs text-gray-500">
-          Recommended: Videos under 100MB. Keep this tab open during processing.
-        </p>
+        <div className="mt-2 space-y-2">
+          <p className="text-xs text-gray-500">
+            Recommendations for faster processing:
+          </p>
+          <ul className="text-xs text-gray-500 list-disc list-inside">
+            <li>Videos under 100MB process faster</li>
+            <li>Longer videos will extract frames at larger intervals</li>
+            <li>Keep this tab open during processing or check back later</li>
+          </ul>
+        </div>
         {status && (
           <div className="mt-4 space-y-2">
             <div className="flex items-center">
