@@ -29,11 +29,19 @@ interface FrameAnnotations {
   [frameId: string]: Annotation[]
 }
 
+interface Video {
+  id: string
+  display_name: string
+  status: string
+  created_at: string
+}
+
 export function VideoFrames({ videoId }: VideoFramesProps) {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [videoStatus, setVideoStatus] = useState<string>('')
+  const [videoDetails, setVideoDetails] = useState<Video | null>(null)
   const [annotations, setAnnotations] = useState<FrameAnnotations>({})
 
   // Load annotations for all frames
@@ -236,16 +244,18 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
 
     async function loadFramesAndStatus() {
       try {
-        // Get video status
+        // Get video details
         const { data: videoData, error: videoError } = await supabase
           .from('videos')
-          .select('status')
+          .select('id, display_name, status, created_at')
           .eq('id', videoId)
           .single();
 
         if (videoError) throw videoError;
         if (!isSubscribed) return;
+        
         setVideoStatus(videoData.status || '');
+        setVideoDetails(videoData);
 
         // Get frames from database
         const { data: frameData, error: frameError } = await supabase
@@ -257,7 +267,6 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
         if (frameError) throw frameError;
         if (!isSubscribed) return;
         
-        // Add type assertion to ensure video_id is not null
         const frames = (frameData || []).filter(frame => frame.video_id !== null) as Frame[];
         setFrames(frames);
 
@@ -302,17 +311,28 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
 
   return (
     <div className="space-y-6">
-      {/* Status Section */}
+      {/* Video Details Section */}
       <div className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-lg font-semibold mb-2">Video Status</h2>
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
-          videoStatus === 'completed' ? 'bg-green-100 text-green-800' :
-          videoStatus === 'error' ? 'bg-red-100 text-red-800' :
-          videoStatus === 'processing' ? 'bg-blue-100 text-blue-800' :
-          'bg-gray-100 text-gray-800'
-        }`}>
-          {videoStatus}
-        </span>
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {videoDetails?.display_name || 'Video Processing'}
+            </h2>
+            <p className="text-sm text-gray-500">
+              {videoDetails?.created_at && 
+                `Uploaded ${new Date(videoDetails.created_at).toLocaleString()}`
+              }
+            </p>
+          </div>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
+            videoStatus === 'completed' ? 'bg-green-100 text-green-800' :
+            videoStatus === 'error' ? 'bg-red-100 text-red-800' :
+            videoStatus === 'processing' ? 'bg-blue-100 text-blue-800' :
+            'bg-gray-100 text-gray-800'
+          }`}>
+            {videoStatus}
+          </span>
+        </div>
       </div>
 
       {/* Frames Section */}

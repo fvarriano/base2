@@ -20,6 +20,19 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
   const [ffmpeg] = useState(() => new FFmpeg())
 
+  const generateDefaultDisplayName = (filename: string) => {
+    const date = new Date()
+    const formattedDate = date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+    return `${filename.split('.')[0]} - ${formattedDate}`
+  }
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return
     
@@ -63,6 +76,7 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
         const timestamp = new Date().getTime()
         const fileExtension = file.name.split('.').pop()
         const uniqueFilename = `${file.name.split('.')[0]}_${timestamp}.${fileExtension}`
+        const defaultDisplayName = generateDefaultDisplayName(file.name)
         
         // Upload to Supabase
         setStatus('Uploading video to storage...')
@@ -83,7 +97,8 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
             project_id: projectId,
             filename: uniqueFilename,
             storage_path: uploadData.path,
-            status: 'processing'
+            status: 'processing',
+            display_name: defaultDisplayName
           })
           .select()
           .single()

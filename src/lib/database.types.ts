@@ -64,20 +64,22 @@ export interface Database {
       }
       videos: {
         Row: {
-          created_at: string | null
-          filename: string
           id: string
-          project_id: string | null
-          status: string | null
+          project_id: string
+          filename: string
           storage_path: string
+          status: string
+          display_name: string
+          created_at: string
         }
         Insert: {
-          created_at?: string | null
-          filename: string
           id?: string
-          project_id?: string | null
-          status?: string | null
+          project_id: string
+          filename: string
           storage_path: string
+          status?: string
+          display_name?: string
+          created_at?: string
         }
         Update: {
           created_at?: string | null
