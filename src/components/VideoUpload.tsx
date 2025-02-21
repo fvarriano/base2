@@ -35,15 +35,22 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
           await ffmpeg.load({
             coreURL: '/ffmpeg-core.js',
             wasmURL: '/ffmpeg-core.wasm',
+            workerURL: '/ffmpeg-core.worker.js',
             log: true
           })
           console.log('FFmpeg loaded successfully')
 
-          // Log FFmpeg version
-          await ffmpeg.exec(['-version'])
-          console.log('FFmpeg is ready')
+          // Test FFmpeg is working
+          try {
+            await ffmpeg.exec(['-version'])
+            console.log('FFmpeg is ready')
+          } catch (versionError) {
+            console.error('FFmpeg version check failed:', versionError)
+            throw new Error('FFmpeg initialization failed')
+          }
         } catch (loadError) {
           console.error('FFmpeg load error:', loadError)
+          setStatus('Failed to load FFmpeg: ' + (loadError instanceof Error ? loadError.message : 'Unknown error'))
           throw new Error('Failed to load FFmpeg')
         }
       }
@@ -138,7 +145,6 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
             console.log(`Processing frame ${i + 1}/${frameFiles.length}`)
             const frameData = await ffmpeg.readFile(frameFile.name)
             const frameBlob = new Blob([frameData], { type: 'image/jpeg' })
-            const framePath = `${projectId}/${videoData.id}/frame_${i}.jpg`
 
             // Upload frame with retries
             let retryCount = 0;
@@ -147,24 +153,48 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
 
             while (retryCount < maxRetries) {
               try {
-                const { error } = await supabase
+                // Construct a consistent frame path that matches the database structure
+                const framePath = `${projectId}/${videoData.id}/frame_${i}.jpg`
+                const { error: uploadError } = await supabase
                   .storage
                   .from('frames')
                   .upload(framePath, frameBlob, {
                     contentType: 'image/jpeg',
                     cacheControl: '3600',
-                    upsert: true // Enable overwriting if file exists
+                    upsert: true
                   });
 
-                if (!error) {
+                if (!uploadError) {
+                  // Get the public URL for the frame
+                  const { data: publicUrlData } = supabase
+                    .storage
+                    .from('frames')
+                    .getPublicUrl(framePath);
+
+                  // Create frame record with complete path
+                  const { error: frameRecordError } = await supabase
+                    .from('frames')
+                    .insert({
+                      video_id: videoData.id,
+                      frame_number: i,
+                      storage_path: framePath
+                    })
+                    .select()
+                    .single();
+
+                  if (frameRecordError) {
+                    console.error('Failed to create frame record:', frameRecordError);
+                    throw new Error(`Failed to create frame record: ${frameRecordError.message}`);
+                  }
+
                   frameUploadError = null;
                   break;
+                } else {
+                  frameUploadError = uploadError;
+                  console.error(`Upload error for frame ${i}:`, uploadError);
+                  retryCount++;
+                  await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, retryCount))); // Exponential backoff
                 }
-                
-                frameUploadError = error as Error;
-                retryCount++;
-                console.log(`Retry ${retryCount}/${maxRetries} for frame ${i + 1}`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
               } catch (err) {
                 frameUploadError = err as Error;
                 retryCount++;
@@ -176,19 +206,6 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
             if (frameUploadError) {
               throw new Error(`Failed to upload frame ${i + 1} after ${maxRetries} attempts: ${frameUploadError.message}`);
             }
-
-            // Create frame record
-            const { error: frameRecordError } = await supabase
-              .from('frames')
-              .insert({
-                video_id: videoData.id,
-                frame_number: i,
-                storage_path: framePath
-              })
-
-            if (frameRecordError) {
-              throw new Error(`Failed to create frame record: ${frameRecordError.message}`);
-            }
             
             console.log(`Frame ${i + 1} processed successfully`);
             setStatus(`Uploaded frame ${i + 1}/${frameFiles.length}`);
@@ -198,10 +215,16 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
           console.log('Updating video status to completed...')
           const { error: updateError } = await supabase
             .from('videos')
-            .update({ status: 'completed' })
+            .update({ 
+              status: 'completed',
+              updated_at: new Date().toISOString()
+            })
             .eq('id', videoData.id)
 
-          if (updateError) throw updateError
+          if (updateError) {
+            console.error('Error updating video status:', updateError)
+            throw updateError
+          }
           console.log('Video processing completed successfully')
 
           setStatus('Processing completed!')

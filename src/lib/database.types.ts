@@ -97,6 +97,47 @@ export interface Database {
           },
         ]
       }
+      annotations: {
+        Row: {
+          id: string
+          frame_id: string
+          number: number
+          x: number
+          y: number
+          text: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          frame_id: string
+          number: number
+          x: number
+          y: number
+          text?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          frame_id?: string
+          number?: number
+          x?: number
+          y?: number
+          text?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "annotations_frame_id_fkey"
+            columns: ["frame_id"]
+            isOneToOne: false
+            referencedRelation: "frames"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never

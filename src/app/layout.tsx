@@ -2,19 +2,37 @@ import '../styles/globals.css'
 import type { Metadata } from 'next'
 import { Inter } from "next/font/google"
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: 'Video Frame Extractor',
-  description: 'Extract frames from videos using FFmpeg',
+  title: 'App Audits',
+  description: 'Extract and analyze frames from app recordings',
 }
 
-export default function RootLayout({
+async function getProjects() {
+  try {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('id, title')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error fetching projects:', error)
+    return []
+  }
+}
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const projects = await getProjects()
+
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} h-full antialiased`}>
@@ -27,7 +45,7 @@ export default function RootLayout({
                 <div className="flex-shrink-0 px-6 pb-4">
                   <h1 className="text-xl font-semibold text-gray-900">
                     <Link href="/" className="hover:text-gray-600 transition-colors">
-                      Frame Extractor
+                      App Audits
                     </Link>
                   </h1>
                 </div>
@@ -35,11 +53,35 @@ export default function RootLayout({
                 {/* Sidebar Navigation */}
                 <nav className="flex-1 px-4 space-y-1">
                   <Link 
-                    href="/projects" 
+                    href="/" 
                     className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:text-gray-900 transition-colors"
                   >
-                    Projects
+                    Dashboard
                   </Link>
+
+                  {/* Projects List */}
+                  <div className="mt-6">
+                    <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Projects
+                    </h3>
+                    <div className="mt-2 space-y-1">
+                      {projects.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">
+                          No projects yet
+                        </div>
+                      ) : (
+                        projects.map((project) => (
+                          <Link
+                            key={project.id}
+                            href={`/projects/${project.id}`}
+                            className="flex items-center px-3 py-2 text-sm text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                          >
+                            {project.title}
+                          </Link>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </nav>
               </div>
             </div>

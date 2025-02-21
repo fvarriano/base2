@@ -59,10 +59,10 @@ export default function ProjectPage() {
         <h2 className="text-xl font-semibold text-gray-900">Project not found</h2>
         <p className="mt-2 text-gray-600">The project you're looking for doesn't exist or has been deleted.</p>
         <Link 
-          href="/projects"
+          href="/"
           className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
-          Return to Projects
+          Return to Dashboard
         </Link>
       </div>
     )
@@ -72,7 +72,7 @@ export default function ProjectPage() {
     <div className="max-w-5xl mx-auto">
       <div className="mb-6">
         <Link 
-          href="/projects" 
+          href="/" 
           className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
         >
           <svg 
@@ -88,7 +88,7 @@ export default function ProjectPage() {
               d="M15 19l-7-7 7-7"
             />
           </svg>
-          Back to Projects
+          Back to Dashboard
         </Link>
       </div>
 
