@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { VideoUpload } from '@/components/VideoUpload'
+import { VideoFrames } from '@/components/VideoFrames'
 
 interface Project {
   id: string
@@ -13,32 +14,51 @@ interface Project {
   created_at: string | null
 }
 
+interface Video {
+  id: string
+  display_name: string
+  status: string
+  created_at: string
+}
+
 export default function ProjectPage() {
   const params = useParams()
   const [project, setProject] = useState<Project | null>(null)
+  const [videos, setVideos] = useState<Video[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchProject = async () => {
+    const fetchProjectAndVideos = async () => {
       if (!params.id) return
 
       try {
-        const { data, error } = await supabase
+        // Fetch project details
+        const { data: projectData, error: projectError } = await supabase
           .from('projects')
           .select('*')
           .eq('id', params.id.toString())
           .single()
 
-        if (error) throw error
-        setProject(data as Project)
+        if (projectError) throw projectError
+        setProject(projectData as Project)
+
+        // Fetch videos for this project
+        const { data: videosData, error: videosError } = await supabase
+          .from('videos')
+          .select('id, display_name, status, created_at')
+          .eq('project_id', params.id.toString())
+          .order('created_at', { ascending: false })
+
+        if (videosError) throw videosError
+        setVideos(videosData as Video[])
       } catch (error) {
-        console.error('Error fetching project:', error)
+        console.error('Error fetching project data:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchProject()
+    fetchProjectAndVideos()
   }, [params.id])
 
   if (loading) {
@@ -104,7 +124,33 @@ export default function ProjectPage() {
         )}
       </div>
 
-      <VideoUpload projectId={project.id} />
+      <div className="space-y-8">
+        <VideoUpload 
+          projectId={project.id} 
+          onVideoProcessed={(videoId) => {
+            // Refresh videos list when a new video is processed
+            supabase
+              .from('videos')
+              .select('id, display_name, status, created_at')
+              .eq('project_id', project.id)
+              .order('created_at', { ascending: false })
+              .then(({ data }) => {
+                if (data) setVideos(data as Video[])
+              })
+          }} 
+        />
+
+        {/* Display all videos */}
+        {videos.map((video) => (
+          <VideoFrames key={video.id} videoId={video.id} />
+        ))}
+
+        {videos.length === 0 && (
+          <div className="bg-white rounded-lg shadow-sm p-6 text-center text-gray-500">
+            No videos uploaded yet. Upload a video to get started.
+          </div>
+        )}
+      </div>
     </div>
   )
 } 

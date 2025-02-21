@@ -72,7 +72,6 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
       setAnnotations(annotationsByFrame)
     } catch (err) {
       console.error('Error loading annotations:', err)
-      // You might want to show an error message to the user here
     }
   }, [])
 
@@ -115,49 +114,28 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
       }))
     } catch (err) {
       console.error('Error creating annotation:', err)
-      // You might want to show an error message to the user here
     }
   }, [annotations])
 
-  // Handle annotation text change
-  const handleAnnotationTextChange = useCallback(async (frameId: string, annotationId: string, text: string) => {
+  // Handle annotation text update
+  const handleAnnotationTextUpdate = useCallback(async (frameId: string, annotationId: string, text: string) => {
     try {
-      // Update annotation in Supabase
-      const { data: updatedAnnotation, error } = await supabase
+      const { error } = await supabase
         .from('annotations')
-        .update({ 
-          text,
-          updated_at: new Date().toISOString() 
-        })
+        .update({ text })
         .eq('id', annotationId)
-        .select()
-        .single()
 
-      if (error) {
-        console.error('Error updating annotation:', error)
-        throw error
-      }
-
-      if (!updatedAnnotation) {
-        throw new Error('No annotation data returned')
-      }
+      if (error) throw error
 
       // Update local state
-      setAnnotations(prev => ({
-        ...prev,
-        [frameId]: prev[frameId].map(annotation =>
-          annotation.id === annotationId ? { ...annotation, ...updatedAnnotation } : annotation
-        )
-      }))
-    } catch (err) {
-      console.error('Error updating annotation:', err)
-      // Optimistically update the UI even if the server update fails
       setAnnotations(prev => ({
         ...prev,
         [frameId]: prev[frameId].map(annotation =>
           annotation.id === annotationId ? { ...annotation, text } : annotation
         )
       }))
+    } catch (err) {
+      console.error('Error updating annotation:', err)
     }
   }, [])
 
@@ -170,10 +148,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
         .delete()
         .eq('id', annotationId)
 
-      if (error) {
-        console.error('Error deleting annotation:', error)
-        throw error
-      }
+      if (error) throw error
 
       // Update local state and reorder remaining annotations
       setAnnotations(prev => {
@@ -200,7 +175,6 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
       })
     } catch (err) {
       console.error('Error deleting annotation:', err)
-      // You might want to show an error message to the user here
     }
   }, [])
 
@@ -239,8 +213,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
   }, [])
 
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-    let isSubscribed = true;
+    let isSubscribed = true
 
     async function loadFramesAndStatus() {
       try {
@@ -249,62 +222,69 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
           .from('videos')
           .select('id, display_name, status, created_at')
           .eq('id', videoId)
-          .single();
+          .single()
 
-        if (videoError) throw videoError;
-        if (!isSubscribed) return;
+        if (videoError) throw videoError
+        if (!isSubscribed) return
         
-        setVideoStatus(videoData.status || '');
-        setVideoDetails(videoData);
+        setVideoStatus(videoData.status || '')
+        setVideoDetails(videoData)
 
         // Get frames from database
         const { data: frameData, error: frameError } = await supabase
           .from('frames')
           .select('*')
           .eq('video_id', videoId)
-          .order('frame_number');
+          .order('frame_number')
 
-        if (frameError) throw frameError;
-        if (!isSubscribed) return;
+        if (frameError) throw frameError
+        if (!isSubscribed) return
         
-        const frames = (frameData || []).filter(frame => frame.video_id !== null) as Frame[];
-        setFrames(frames);
+        const frames = (frameData || []).filter(frame => frame.video_id !== null) as Frame[]
+        setFrames(frames)
 
         // Load annotations if we have frames
         if (frames.length > 0) {
-          await loadAnnotations(frames);
+          await loadAnnotations(frames)
         }
-
-        // If video processing is complete or errored, stop polling
-        if (videoData.status === 'completed' || videoData.status === 'error') {
-          clearInterval(intervalId);
-        }
-
       } catch (err) {
-        console.error('Error loading frames:', err);
+        console.error('Error loading frames:', err)
         if (isSubscribed) {
-          setError(err instanceof Error ? err.message : 'Failed to load frames');
+          setError(err instanceof Error ? err.message : 'Failed to load frames')
         }
-        clearInterval(intervalId);
       } finally {
         if (isSubscribed) {
-          setLoading(false);
+          setLoading(false)
         }
       }
     }
 
     // Load immediately
-    loadFramesAndStatus();
+    loadFramesAndStatus()
 
-    // Then poll every 2 seconds only if video is still processing
-    intervalId = setInterval(loadFramesAndStatus, 2000);
+    // Set up real-time subscription for annotations
+    const annotationsSubscription = supabase
+      .channel('annotations-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'annotations'
+        },
+        (payload) => {
+          // Reload annotations when changes occur
+          loadFramesAndStatus()
+        }
+      )
+      .subscribe()
 
     // Cleanup
     return () => {
-      isSubscribed = false;
-      clearInterval(intervalId);
-    };
-  }, [videoId, loadAnnotations]);
+      isSubscribed = false
+      annotationsSubscription.unsubscribe()
+    }
+  }, [videoId, loadAnnotations])
 
   if (loading) return <div>Loading frames...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -429,7 +409,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                                 <div className="flex-1">
                                   <textarea
                                     value={annotation.text || ''}
-                                    onChange={(e) => handleAnnotationTextChange(frame.id, annotation.id, e.target.value)}
+                                    onChange={(e) => handleAnnotationTextUpdate(frame.id, annotation.id, e.target.value)}
                                     placeholder="Add annotation note..."
                                     className="w-full min-h-[60px] px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                   />

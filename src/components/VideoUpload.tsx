@@ -6,6 +6,7 @@ import { fetchFile } from '@ffmpeg/util'
 
 interface VideoUploadProps {
   projectId: string
+  onVideoProcessed?: (videoId: string) => void
 }
 
 interface FFmpegFileInfo {
@@ -14,7 +15,7 @@ interface FFmpegFileInfo {
   isDir?: boolean;
 }
 
-export function VideoUpload({ projectId }: VideoUploadProps) {
+export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [status, setStatus] = useState<string>('')
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -243,6 +244,10 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
           console.log('Video processing completed successfully')
 
           setStatus('Processing completed!')
+          
+          // Notify parent component that processing is complete
+          onVideoProcessed?.(videoData.id)
+
         } catch (ffmpegError) {
           console.error('FFmpeg processing error:', ffmpegError)
           throw new Error('Failed to process video: ' + (ffmpegError instanceof Error ? ffmpegError.message : 'Unknown error'))
