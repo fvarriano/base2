@@ -14,17 +14,4 @@ ALTER TABLE public.videos
 -- Add index for better querying
 CREATE INDEX IF NOT EXISTS idx_videos_display_name ON public.videos(display_name);
 
--- Update the videos type to include display_name in the public API
-ALTER TYPE public.videos SET (
-    RENAME TO videos_old
-);
-
-CREATE TYPE public.videos AS (
-    id UUID,
-    project_id UUID,
-    filename TEXT,
-    storage_path TEXT,
-    status TEXT,
-    display_name TEXT,
-    created_at TIMESTAMPTZ
-);
+-- No need to modify types as they are automatically handled by Supabase
