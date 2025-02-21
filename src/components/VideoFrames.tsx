@@ -29,16 +29,18 @@ interface FrameAnnotations {
   [frameId: string]: Annotation[]
 }
 
+type VideoStatus = 'processing' | 'completed' | 'error';
+
 interface Video {
   id: string
   display_name: string
-  status: 'processing' | 'completed' | 'error'
+  status: VideoStatus
   created_at: string
 }
 
 interface VideoUpdate {
   display_name?: string
-  status?: 'processing' | 'completed' | 'error'
+  status?: VideoStatus
   updated_at?: string
 }
 
@@ -46,7 +48,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [videoStatus, setVideoStatus] = useState<'processing' | 'completed' | 'error'>('processing')
+  const [videoStatus, setVideoStatus] = useState<VideoStatus>('processing')
   const [videoDetails, setVideoDetails] = useState<Video | null>(null)
   const [annotations, setAnnotations] = useState<FrameAnnotations>({})
   const [isEditingTitle, setIsEditingTitle] = useState(false)
@@ -258,10 +260,11 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
         if (videoError) throw videoError
         if (!isSubscribed) return
         
-        // Ensure status is one of the valid values
-        const status = videoData.status === 'completed' || videoData.status === 'error' 
-          ? videoData.status 
-          : 'processing'
+        // Type guard to ensure status is valid
+        const isValidStatus = (status: string): status is VideoStatus =>
+          ['processing', 'completed', 'error'].includes(status)
+
+        const status = isValidStatus(videoData.status) ? videoData.status : 'processing'
         
         setVideoStatus(status)
         setVideoDetails({
@@ -333,7 +336,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
   return (
     <div className="space-y-6">
       {/* Only show video details section while processing */}
-      {videoStatus === 'processing' && (
+      {(videoStatus as string) === 'processing' && (
         <div className="bg-white rounded-lg shadow p-4">
           <div className="flex justify-between items-start mb-2">
             <div>
@@ -347,10 +350,9 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
               </p>
             </div>
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
-              videoStatus === 'completed' ? 'bg-green-100 text-green-800' :
-              videoStatus === 'error' ? 'bg-red-100 text-red-800' :
-              videoStatus === 'processing' ? 'bg-blue-100 text-blue-800' :
-              'bg-gray-100 text-gray-800'
+              (videoStatus as string) === 'completed' ? 'bg-green-100 text-green-800' :
+              (videoStatus as string) === 'error' ? 'bg-red-100 text-red-800' :
+              'bg-blue-100 text-blue-800'
             }`}>
               {videoStatus}
             </span>
