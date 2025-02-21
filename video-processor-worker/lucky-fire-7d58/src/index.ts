@@ -12,6 +12,8 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile } from '@ffmpeg/util';
 
 interface Env {
 	SUPABASE_URL: string;
@@ -26,6 +28,45 @@ interface ProcessVideoRequest {
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const url = new URL(request.url);
+		
+		// Handle static file requests
+		if (request.method === 'GET') {
+			if (url.pathname === '/ffmpeg-core.js') {
+				const response = await fetch('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js');
+				return new Response(response.body, {
+					headers: {
+						'Content-Type': 'text/javascript',
+						'Access-Control-Allow-Origin': '*',
+						'Cross-Origin-Embedder-Policy': 'require-corp',
+						'Cross-Origin-Opener-Policy': 'same-origin'
+					}
+				});
+			}
+			if (url.pathname === '/ffmpeg-core.wasm') {
+				const response = await fetch('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm');
+				return new Response(response.body, {
+					headers: {
+						'Content-Type': 'application/wasm',
+						'Access-Control-Allow-Origin': '*',
+						'Cross-Origin-Embedder-Policy': 'require-corp',
+						'Cross-Origin-Opener-Policy': 'same-origin'
+					}
+				});
+			}
+			if (url.pathname === '/ffmpeg-worker.js') {
+				const response = await fetch('https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-worker.js');
+				return new Response(response.body, {
+					headers: {
+						'Content-Type': 'text/javascript',
+						'Access-Control-Allow-Origin': '*',
+						'Cross-Origin-Embedder-Policy': 'require-corp',
+						'Cross-Origin-Opener-Policy': 'same-origin'
+					}
+				});
+			}
+		}
+
 		let videoId: string | undefined;
 		let supabase: any;
 
@@ -34,19 +75,23 @@ export default {
 			return new Response(null, {
 				headers: {
 					'Access-Control-Allow-Origin': '*',
-					'Access-Control-Allow-Methods': 'POST, OPTIONS',
+					'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 					'Access-Control-Allow-Headers': 'Content-Type',
 					'Access-Control-Max-Age': '86400',
+					'Cross-Origin-Embedder-Policy': 'require-corp',
+					'Cross-Origin-Opener-Policy': 'same-origin'
 				},
 			});
 		}
 
-		// Only allow POST requests
+		// Only allow POST requests for video processing
 		if (request.method !== 'POST') {
 			return new Response('Method not allowed', { 
 				status: 405,
 				headers: {
 					'Access-Control-Allow-Origin': '*',
+					'Cross-Origin-Embedder-Policy': 'require-corp',
+					'Cross-Origin-Opener-Policy': 'same-origin'
 				}
 			});
 		}
@@ -90,86 +135,60 @@ export default {
 				throw new Error(`Failed to update video status: ${updateError.message}`);
 			}
 
-			// Create the frames
-			console.log('Starting frame creation');
-			const frames = [];
-			for (let i = 0; i < 5; i++) {
-				console.log(`Processing frame ${i + 1}/5`);
-				
-				// Create a 100x100 pixel JPEG with a colored background
-				const width = 100;
-				const height = 100;
-				const frameDataArray = [
-					0xFF, 0xD8, // SOI marker
-					0xFF, 0xE0, // APP0 marker
-					0x00, 0x10, // Length of APP0 segment
-					0x4A, 0x46, 0x49, 0x46, 0x00, // JFIF identifier
-					0x01, 0x01, // JFIF version
-					0x00, // Density units
-					0x00, 0x01, // X density
-					0x00, 0x01, // Y density
-					0x00, 0x00, // Thumbnail size
-					0xFF, 0xC0, // SOF marker
-					0x00, 0x11, // Length of SOF segment
-					0x08, // Precision
-					(height >> 8) & 0xFF, height & 0xFF, // Height (100)
-					(width >> 8) & 0xFF, width & 0xFF,   // Width (100)
-					0x03, // Number of components (RGB)
-					0x01, 0x22, 0x00, // Y component
-					0x02, 0x11, 0x01, // Cb component
-					0x03, 0x11, 0x01, // Cr component
-					0xFF, 0xDB, // DQT marker
-					0x00, 0x43, // Length
-					0x00, // Table ID
-					// Basic luminance quantization table
-					0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07,
-					0x07, 0x07, 0x09, 0x09, 0x08, 0x0A, 0x0C, 0x14,
-					0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12, 0x13,
-					0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D, 0x1A,
-					0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20, 0x22,
-					0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29, 0x2C,
-					0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27, 0x39,
-					0x3D, 0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34, 0x32,
-					0xFF, 0xC4, // DHT marker
-					0x00, 0x1F, // Length
-					0x00, // Table class and ID
-					// Basic Huffman table
-					0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01, 0x01,
-					0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-					0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-					0x08, 0x09, 0x0A, 0x0B,
-					0xFF, 0xDA, // SOS marker
-					0x00, 0x0C, // Length
-					0x03, // Number of components
-					0x01, 0x00, // Y component
-					0x02, 0x00, // Cb component
-					0x03, 0x00, // Cr component
-					0x00, 0x3F, 0x00  // Spectral selection
-				];
+			// Download video from storage
+			console.log('Downloading video from storage');
+			const { data: videoData, error: downloadError } = await supabase
+				.storage
+				.from('videos')
+				.download(storagePath);
 
-				// Add image data - a simple gradient pattern
-				for (let y = 0; y < height; y++) {
-					for (let x = 0; x < width; x++) {
-						const r = Math.floor((x / width) * 255);
-						const g = Math.floor((y / height) * 255);
-						const b = Math.floor(((x + y) / (width + height)) * 255);
-						frameDataArray.push(r, g, b);
-					}
-				}
+			if (downloadError) {
+				throw new Error(`Failed to download video: ${downloadError.message}`);
+			}
 
-				// Add EOI marker
-				frameDataArray.push(0xFF, 0xD9);
+			// Initialize FFmpeg
+			console.log('Initializing FFmpeg');
+			const ffmpeg = new FFmpeg();
+			const baseUrl = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+			await ffmpeg.load({
+				coreURL: `${baseUrl}/ffmpeg-core.js`,
+				wasmURL: `${baseUrl}/ffmpeg-core.wasm`,
+				workerURL: `${baseUrl}/ffmpeg-worker.js`
+			});
 
-				const frameData = new Uint8Array(frameDataArray);
-				const blob = new Blob([frameData], { type: 'image/jpeg' });
+			// Write video file to FFmpeg virtual filesystem
+			const videoBlob = new Blob([videoData], { type: 'video/mp4' });
+			const videoBuffer = await fetchFile(videoBlob);
+			await ffmpeg.writeFile('input.mp4', videoBuffer);
+
+			// Extract frames (1 frame per second)
+			console.log('Extracting frames');
+			await ffmpeg.exec([
+				'-i', 'input.mp4',
+				'-vf', 'fps=1',
+				'-frame_pts', '1',
+				'-f', 'image2',
+				'frame_%d.jpg'
+			]);
+
+			// Get list of generated frames
+			const frames = await ffmpeg.listDir('/');
+			const frameFiles = frames.filter(f => f.name.startsWith('frame_') && f.name.endsWith('.jpg'));
+
+			// Upload frames and create records
+			console.log(`Uploading ${frameFiles.length} frames`);
+			for (let i = 0; i < frameFiles.length; i++) {
+				const frameFile = frameFiles[i];
+				const frameData = await ffmpeg.readFile(frameFile.name);
+				const frameBlob = new Blob([frameData], { type: 'image/jpeg' });
 				const framePath = `${projectId}/${videoId}/frame_${i}.jpg`;
-				
+
 				// Upload frame
 				console.log(`Uploading frame ${i + 1} to ${framePath}`);
 				const { error: frameUploadError } = await supabase
 					.storage
 					.from('frames')
-					.upload(framePath, blob, {
+					.upload(framePath, frameBlob, {
 						contentType: 'image/jpeg',
 						cacheControl: '3600'
 					});
@@ -177,8 +196,6 @@ export default {
 				if (frameUploadError) {
 					throw new Error(`Failed to upload frame ${i}: ${frameUploadError.message}`);
 				}
-
-				console.log(`Frame ${i + 1} uploaded successfully`);
 
 				// Create frame record
 				console.log(`Creating database record for frame ${i + 1}`);
@@ -193,9 +210,6 @@ export default {
 				if (frameRecordError) {
 					throw new Error(`Failed to create frame record ${i}: ${frameRecordError.message}`);
 				}
-
-				frames.push(framePath);
-				console.log(`Frame ${i + 1} completed`);
 			}
 
 			// Update video status to completed
@@ -216,7 +230,7 @@ export default {
 				JSON.stringify({ 
 					success: true,
 					message: 'Video processing completed',
-					frameCount: frames.length
+					frameCount: frameFiles.length
 				}),
 				{ 
 					headers: { 

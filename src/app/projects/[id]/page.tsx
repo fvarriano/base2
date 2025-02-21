@@ -41,23 +41,45 @@ export default function ProjectPage() {
     fetchProject()
   }, [params.id])
 
-  if (loading) return <div>Loading...</div>
-  if (!project) return <div>Project not found</div>
+  if (loading) return <div className="p-4">Loading...</div>
+  if (!project) return <div className="p-4">Project not found</div>
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <Link href="/" className="text-blue-500 hover:text-blue-600">
-        ← Back to Projects
-      </Link>
-      <h1 className="text-2xl font-bold mt-4">{project.title}</h1>
-      {project.description && (
-        <p className="mt-2 text-gray-600">{project.description}</p>
-      )}
-      {project.created_at && (
-        <p className="mt-2 text-sm text-gray-500">
-          Created: {new Date(project.created_at).toLocaleDateString()}
-        </p>
-      )}
+    <div>
+      <div className="mb-6">
+        <Link 
+          href="/projects" 
+          className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
+        >
+          <svg 
+            className="w-4 h-4 mr-1" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
+          Back to Projects
+        </Link>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+        <h1 className="text-2xl font-bold">{project.title}</h1>
+        {project.description && (
+          <p className="mt-2 text-gray-600">{project.description}</p>
+        )}
+        {project.created_at && (
+          <p className="mt-2 text-sm text-gray-500">
+            Created: {new Date(project.created_at).toLocaleDateString()}
+          </p>
+        )}
+      </div>
+
       <VideoUpload projectId={project.id} />
     </div>
   )

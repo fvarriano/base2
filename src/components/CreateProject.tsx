@@ -1,11 +1,14 @@
+'use client'
+
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
-interface CreateProjectProps {
-  onProjectCreated: () => void
-}
+const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL 
+  ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+  : 'http://localhost:3000'
 
-export function CreateProject({ onProjectCreated }: CreateProjectProps) {
+export function CreateProject() {
+  const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -16,16 +19,22 @@ export function CreateProject({ onProjectCreated }: CreateProjectProps) {
     setIsSubmitting(true)
 
     try {
-      const { error } = await supabase
-        .from('projects')
-        .insert([{ title, description }])
+      const res = await fetch(`${baseUrl}/api/projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title, description }),
+      })
 
-      if (error) throw error
+      if (!res.ok) {
+        throw new Error('Failed to create project')
+      }
 
       setTitle('')
       setDescription('')
       setIsOpen(false)
-      onProjectCreated()
+      router.refresh()
     } catch (error) {
       console.error('Error creating project:', error)
     } finally {
@@ -35,7 +44,10 @@ export function CreateProject({ onProjectCreated }: CreateProjectProps) {
 
   return (
     <div>
-      <button onClick={() => setIsOpen(true)} className="btn-primary">
+      <button 
+        onClick={() => setIsOpen(true)} 
+        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+      >
         Create Project
       </button>
 
@@ -52,7 +64,7 @@ export function CreateProject({ onProjectCreated }: CreateProjectProps) {
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="input"
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
               </div>
@@ -63,7 +75,7 @@ export function CreateProject({ onProjectCreated }: CreateProjectProps) {
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="input"
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows={3}
                 />
               </div>
@@ -71,14 +83,14 @@ export function CreateProject({ onProjectCreated }: CreateProjectProps) {
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="btn-secondary"
+                  className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="btn-primary"
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded disabled:opacity-50"
                 >
                   {isSubmitting ? 'Creating...' : 'Create'}
                 </button>

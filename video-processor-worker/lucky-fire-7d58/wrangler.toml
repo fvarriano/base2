@@ -1,0 +1,27 @@
+name = "video-processor"
+main = "src/index.ts"
+compatibility_date = "2024-02-19"
+
+[vars]
+# You can define environment variables here
+# MY_VARIABLE = "my-value"
+
+[[rules]]
+type = "Data"
+globs = ["**/*.wasm"]
+fallthrough = true
+
+[site]
+bucket = "./public"
+
+[[headers]]
+for = "/ffmpeg-core.js"
+[headers.response]
+Access-Control-Allow-Origin = "*"
+Content-Type = "text/javascript"
+
+[[headers]]
+for = "/ffmpeg-core.wasm"
+[headers.response]
+Access-Control-Allow-Origin = "*"
+Content-Type = "application/wasm" 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import Image from 'next/image'
 
 interface VideoFramesProps {
   videoId: string
@@ -7,7 +8,7 @@ interface VideoFramesProps {
 
 interface Frame {
   id: string
-  video_id: string | null
+  video_id: string
   frame_number: number
   storage_path: string
   created_at: string | null
@@ -42,7 +43,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
           .order('frame_number');
 
         if (frameError) throw frameError;
-        setFrames(frameData || []);
+        setFrames(frameData as Frame[]);
 
         // If video processing is complete or errored, stop polling
         if (videoData.status === 'completed' || videoData.status === 'error') {
@@ -72,42 +73,66 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
   if (error) return <div>Error: {error}</div>;
 
   return (
-    <div className="mt-4">
-      <div className="mb-4">
-        <span className="text-sm font-medium">Status: </span>
-        <span className={`text-sm ${
-          videoStatus === 'completed' ? 'text-green-600' :
-          videoStatus === 'error' ? 'text-red-600' :
-          videoStatus === 'processing' ? 'text-blue-600' :
-          'text-gray-600'
+    <div className="space-y-6">
+      {/* Status Section */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <h2 className="text-lg font-semibold mb-2">Video Status</h2>
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
+          videoStatus === 'completed' ? 'bg-green-100 text-green-800' :
+          videoStatus === 'error' ? 'bg-red-100 text-red-800' :
+          videoStatus === 'processing' ? 'bg-blue-100 text-blue-800' :
+          'bg-gray-100 text-gray-800'
         }`}>
           {videoStatus}
         </span>
       </div>
 
+      {/* Frames Section */}
       {frames.length === 0 ? (
-        <div>
-          {videoStatus === 'processing' ? 'Processing video...' : 'No frames available'}
+        <div className="bg-white rounded-lg shadow p-4">
+          {videoStatus === 'processing' ? 
+            <div className="text-blue-600">Processing video...</div> : 
+            <div className="text-gray-500">No frames available</div>
+          }
         </div>
       ) : (
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Extracted Frames</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {frames.map((frame) => (
-              <div key={frame.id} className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden">
-                <img
-                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/frames/${frame.storage_path}`}
-                  alt={`Frame ${frame.frame_number}`}
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1">
-                  Frame {frame.frame_number}
-                </div>
+        <div className="bg-white rounded-lg shadow p-4">
+          <h2 className="text-lg font-semibold mb-4">Extracted Frames</h2>
+          <div className="relative">
+            {/* Left shadow gradient */}
+            <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-10" />
+            
+            {/* Right shadow gradient */}
+            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent z-10" />
+            
+            {/* Scrollable container */}
+            <div className="overflow-x-auto pb-4 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+              <div className="flex gap-4" style={{ width: 'max-content' }}>
+                {frames.map((frame) => (
+                  <div 
+                    key={frame.id} 
+                    className="relative w-[320px] flex-none"
+                  >
+                    <div className="relative aspect-video rounded-lg overflow-hidden bg-gray-100 shadow-sm">
+                      <Image
+                        src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/frames/${frame.storage_path}`}
+                        alt={`Frame ${frame.frame_number}`}
+                        fill
+                        sizes="320px"
+                        className="object-cover"
+                        crossOrigin="anonymous"
+                      />
+                    </div>
+                    <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded-md backdrop-blur-sm">
+                      Frame {frame.frame_number + 1}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 } 
