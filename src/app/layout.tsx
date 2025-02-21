@@ -1,5 +1,4 @@
 import '../styles/globals.css'
-import '../styles/scrollbar.css'
 import type { Metadata } from 'next'
 import { Inter } from "next/font/google"
 import Link from 'next/link'
@@ -19,39 +18,41 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} h-full antialiased`}>
-        <div className="flex h-full">
-          {/* Sidebar */}
-          <aside className="w-64 bg-white border-r border-gray-200 flex-shrink-0">
-            <div className="h-full flex flex-col">
-              {/* Sidebar Header */}
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h1 className="text-xl font-semibold text-gray-900">
-                  <Link href="/" className="hover:text-gray-600">
-                    Frame Extractor
-                  </Link>
-                </h1>
-              </div>
-              
-              {/* Sidebar Navigation */}
-              <nav className="flex-1 px-4 py-4">
-                <div className="space-y-1">
+        <div className="min-h-full">
+          <div className="flex min-h-full">
+            {/* Sidebar */}
+            <div className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 lg:border-r lg:border-gray-200 lg:bg-white lg:pt-5">
+              <div className="flex flex-col flex-grow">
+                {/* Sidebar Header */}
+                <div className="flex-shrink-0 px-6 pb-4">
+                  <h1 className="text-xl font-semibold text-gray-900">
+                    <Link href="/" className="hover:text-gray-600 transition-colors">
+                      Frame Extractor
+                    </Link>
+                  </h1>
+                </div>
+                
+                {/* Sidebar Navigation */}
+                <nav className="flex-1 px-4 space-y-1">
                   <Link 
                     href="/projects" 
-                    className="flex items-center px-2 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:text-gray-900"
+                    className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 rounded-md hover:bg-gray-50 hover:text-gray-900 transition-colors"
                   >
                     Projects
                   </Link>
-                </div>
-              </nav>
+                </nav>
+              </div>
             </div>
-          </aside>
 
-          {/* Main Content */}
-          <main className="flex-1 min-w-0 bg-gray-50">
-            <div className="py-8 px-8">
-              {children}
+            {/* Main Content */}
+            <div className="lg:pl-64 flex flex-col flex-1">
+              <main className="flex-1 pb-8">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 lg:pt-12">
+                  {children}
+                </div>
+              </main>
             </div>
-          </main>
+          </div>
         </div>
       </body>
     </html>

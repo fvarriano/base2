@@ -41,11 +41,35 @@ export default function ProjectPage() {
     fetchProject()
   }, [params.id])
 
-  if (loading) return <div className="p-4">Loading...</div>
-  if (!project) return <div className="p-4">Project not found</div>
+  if (loading) {
+    return (
+      <div className="animate-pulse">
+        <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="h-8 bg-gray-200 rounded w-1/2 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!project) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <h2 className="text-xl font-semibold text-gray-900">Project not found</h2>
+        <p className="mt-2 text-gray-600">The project you're looking for doesn't exist or has been deleted.</p>
+        <Link 
+          href="/projects"
+          className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+        >
+          Return to Projects
+        </Link>
+      </div>
+    )
+  }
 
   return (
-    <div>
+    <div className="max-w-5xl mx-auto">
       <div className="mb-6">
         <Link 
           href="/projects" 
@@ -69,7 +93,7 @@ export default function ProjectPage() {
       </div>
 
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-        <h1 className="text-2xl font-bold">{project.title}</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{project.title}</h1>
         {project.description && (
           <p className="mt-2 text-gray-600">{project.description}</p>
         )}
