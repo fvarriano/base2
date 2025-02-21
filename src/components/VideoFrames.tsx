@@ -222,7 +222,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
     }
   }, [])
 
-  // Add function to handle title update
+  // Update handleTitleUpdate to store the title in the video record
   const handleTitleUpdate = async (newTitle: string) => {
     try {
       const updates: VideoUpdate = {
@@ -237,7 +237,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
 
       if (error) throw error
 
-      // Update local state
+      setFrameGroupTitle(newTitle)
       setVideoDetails(prev => prev ? { ...prev, display_name: newTitle } : null)
       setIsEditingTitle(false)
     } catch (err) {
@@ -273,6 +273,9 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
           status,
           created_at: videoData.created_at
         })
+        
+        // Set the frame group title from the video's display name
+        setFrameGroupTitle(videoData.display_name || 'Extracted Frames')
 
         // Get frames from database
         const { data: frameData, error: frameError } = await supabase
@@ -383,7 +386,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                       handleTitleUpdate(frameGroupTitle)
                     } else if (e.key === 'Escape') {
                       setIsEditingTitle(false)
-                      setFrameGroupTitle('Extracted Frames') // Reset to default if cancelled
+                      setFrameGroupTitle(videoDetails?.display_name || 'Extracted Frames') // Reset to current title
                     }
                   }}
                   className="text-lg font-semibold px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -400,7 +403,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                 <button
                   onClick={() => {
                     setIsEditingTitle(false)
-                    setFrameGroupTitle('Extracted Frames') // Reset to default if cancelled
+                    setFrameGroupTitle(videoDetails?.display_name || 'Extracted Frames') // Reset to current title
                   }}
                   className="p-1 text-gray-500 hover:text-gray-700"
                 >
@@ -425,11 +428,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
           </div>
 
           <div className="relative">
-            {/* Left shadow gradient */}
-            <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-10" />
-            
-            {/* Right shadow gradient */}
-            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent z-10" />
+            {/* Remove the gradient divs */}
             
             {/* Scrollable container */}
             <div className="overflow-x-auto pb-4 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
