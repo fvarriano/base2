@@ -143,7 +143,7 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
             // Upload frame with retries
             let retryCount = 0;
             const maxRetries = 3;
-            let frameUploadError = null;
+            let frameUploadError: Error | null = null;
 
             while (retryCount < maxRetries) {
               try {
@@ -161,12 +161,12 @@ export function VideoUpload({ projectId }: VideoUploadProps) {
                   break;
                 }
                 
-                frameUploadError = error;
+                frameUploadError = error as Error;
                 retryCount++;
                 console.log(`Retry ${retryCount}/${maxRetries} for frame ${i + 1}`);
                 await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
               } catch (err) {
-                frameUploadError = err;
+                frameUploadError = err as Error;
                 retryCount++;
                 console.error(`Upload attempt ${retryCount} failed:`, err);
                 await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
