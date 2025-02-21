@@ -196,6 +196,40 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
     }
   }, [])
 
+  // Add handleDeleteFrame function
+  const handleDeleteFrame = useCallback(async (frame: Frame) => {
+    try {
+      // Delete frame from storage
+      const { error: storageError } = await supabase
+        .storage
+        .from('frames')
+        .remove([frame.storage_path])
+
+      if (storageError) throw storageError
+
+      // Delete frame from database (this will cascade delete annotations)
+      const { error: dbError } = await supabase
+        .from('frames')
+        .delete()
+        .eq('id', frame.id)
+
+      if (dbError) throw dbError
+
+      // Update local state
+      setFrames(prev => prev.filter(f => f.id !== frame.id))
+      
+      // Remove annotations for this frame
+      setAnnotations(prev => {
+        const newAnnotations = { ...prev }
+        delete newAnnotations[frame.id]
+        return newAnnotations
+      })
+    } catch (err) {
+      console.error('Error deleting frame:', err)
+      // You might want to show an error message to the user here
+    }
+  }, [])
+
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
     let isSubscribed = true;
@@ -305,7 +339,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                 {frames.map((frame) => (
                   <div key={frame.id} className="flex-none space-y-4">
                     {/* Frame Container */}
-                    <div className="relative w-[640px]">
+                    <div className="relative w-[640px] group">
                       <div 
                         className="relative aspect-video rounded-lg overflow-hidden bg-gray-100 shadow-lg cursor-crosshair"
                         onClick={(e) => handleFrameClick(frame.id, e)}
@@ -329,9 +363,18 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                             imgElement.style.display = 'none';
                           }}
                         />
-                        <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
-                          {frame.frame_number + 1}
-                        </div>
+                        {/* Delete Button - Visible on hover */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent frame click
+                            handleDeleteFrame(frame);
+                          }}
+                          className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                         {/* Annotation Markers */}
                         {annotations[frame.id]?.map((annotation) => (
                           <div
@@ -345,42 +388,46 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                           </div>
                         ))}
                       </div>
-                      <div className="absolute bottom-3 left-3 right-3 bg-black/70 text-white text-sm px-3 py-1.5 rounded-md backdrop-blur-sm">
-                        Frame {frame.frame_number + 1}
-                      </div>
                     </div>
 
-                    {/* Annotations List */}
-                    {annotations[frame.id]?.length > 0 && (
-                      <div className="w-[640px] bg-gray-50 rounded-lg p-4 space-y-3">
-                        <h3 className="font-medium text-gray-900">Annotations</h3>
-                        <div className="space-y-2">
-                          {annotations[frame.id].map((annotation) => (
-                            <div key={annotation.id} className="flex items-start gap-3">
-                              <div className="flex-none w-6 h-6 bg-blue-500 rounded-full text-white text-sm flex items-center justify-center">
-                                {annotation.number}
-                              </div>
-                              <div className="flex-1">
-                                <textarea
-                                  value={annotation.text || ''}
-                                  onChange={(e) => handleAnnotationTextChange(frame.id, annotation.id, e.target.value)}
-                                  placeholder="Add annotation note..."
-                                  className="w-full min-h-[60px] px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                              </div>
-                              <button
-                                onClick={() => handleDeleteAnnotation(frame.id, annotation.id)}
-                                className="flex-none p-1 text-gray-400 hover:text-red-500"
-                              >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
+                    {/* Frame Title and Annotations */}
+                    <div className="w-[640px] space-y-4">
+                      <div className="text-sm font-medium text-gray-900 px-1">
+                        Frame {frame.frame_number + 1}
                       </div>
-                    )}
+
+                      {/* Annotations List */}
+                      {annotations[frame.id]?.length > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                          <h3 className="font-medium text-gray-900">Annotations</h3>
+                          <div className="space-y-2">
+                            {annotations[frame.id].map((annotation) => (
+                              <div key={annotation.id} className="flex items-start gap-3">
+                                <div className="flex-none w-6 h-6 bg-blue-500 rounded-full text-white text-sm flex items-center justify-center">
+                                  {annotation.number}
+                                </div>
+                                <div className="flex-1">
+                                  <textarea
+                                    value={annotation.text || ''}
+                                    onChange={(e) => handleAnnotationTextChange(frame.id, annotation.id, e.target.value)}
+                                    placeholder="Add annotation note..."
+                                    className="w-full min-h-[60px] px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteAnnotation(frame.id, annotation.id)}
+                                  className="flex-none p-1 text-gray-400 hover:text-red-500"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
