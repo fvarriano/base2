@@ -5,21 +5,22 @@ import { supabase } from '@/lib/supabase'
 interface Project {
   id: string
   title: string
-  description: string
-  created_at: string
+  description: string | null
+  created_at: string | null
 }
 
 async function fetchProjects(): Promise<Project[]> {
   try {
-    const response = await fetch('/api/projects', {
-      cache: 'no-store'
-    })
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false })
     
-    if (!response.ok) {
-      throw new Error('Failed to fetch projects')
+    if (error) {
+      throw new Error(`Failed to fetch projects: ${error.message}`)
     }
     
-    return await response.json()
+    return data || []
   } catch (error) {
     console.error('Error fetching projects:', error)
     return []
