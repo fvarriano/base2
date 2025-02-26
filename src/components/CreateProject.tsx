@@ -13,30 +13,48 @@ export function CreateProject() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!title.trim()) {
+      setError('Title is required')
+      return
+    }
+    
     setIsSubmitting(true)
-
+    setError(null)
+    
     try {
-      const res = await fetch(`${baseUrl}/api/projects`, {
+      const response = await fetch('/api/projects', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ title, description }),
+        body: JSON.stringify({
+          title,
+          description,
+        }),
       })
-
-      if (!res.ok) {
-        throw new Error('Failed to create project')
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to create project')
       }
-
+      
+      const data = await response.json()
+      
+      // Reset form
       setTitle('')
       setDescription('')
       setIsOpen(false)
+      
+      // Refresh projects
       router.refresh()
     } catch (error) {
       console.error('Error creating project:', error)
+      setError(error instanceof Error ? error.message : 'An error occurred')
     } finally {
       setIsSubmitting(false)
     }

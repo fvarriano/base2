@@ -5,26 +5,24 @@ import { supabase } from '@/lib/supabase'
 interface Project {
   id: string
   title: string
-  description: string | null
-  created_at: string | null
+  description: string
+  created_at: string
 }
 
-async function getProjects(): Promise<Project[]> {
+async function fetchProjects(): Promise<Project[]> {
   try {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Error fetching projects:', error)
-      throw error
+    const response = await fetch('/api/projects', {
+      cache: 'no-store'
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch projects')
     }
     
-    return data || []
+    return await response.json()
   } catch (error) {
-    console.error('Error in getProjects:', error)
-    throw error
+    console.error('Error fetching projects:', error)
+    return []
   }
 }
 
@@ -32,7 +30,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export default async function Home() {
-  const projects = await getProjects()
+  const projects = await fetchProjects()
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
