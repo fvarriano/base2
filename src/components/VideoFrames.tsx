@@ -48,11 +48,15 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
   const [frames, setFrames] = useState<Frame[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [videoStatus, setVideoStatus] = useState<VideoStatus>('processing')
-  const [videoDetails, setVideoDetails] = useState<Video | null>(null)
+  const [selectedFrame, setSelectedFrame] = useState<Frame | null>(null)
   const [annotations, setAnnotations] = useState<FrameAnnotations>({})
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [frameGroupTitle, setFrameGroupTitle] = useState('Extracted Frames')
+  const [videoStatus, setVideoStatus] = useState<VideoStatus>('processing')
+  const [videoDetails, setVideoDetails] = useState<Video | null>(null)
+  const [processingStartTime, setProcessingStartTime] = useState<Date | null>(null)
+  const [processingDuration, setProcessingDuration] = useState<string>('')
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
 
   // Load annotations for all frames
   const loadAnnotations = useCallback(async (frames: Frame[]) => {
@@ -245,9 +249,24 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
     }
   }
 
-  useEffect(() => {
-    let isSubscribed = true
+  // Add a function to format the processing duration
+  const formatDuration = (startTime: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - startTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffSecs = Math.floor((diffMs % 60000) / 1000);
+    
+    if (diffMins > 0) {
+      return `${diffMins} min ${diffSecs} sec`;
+    } else {
+      return `${diffSecs} sec`;
+    }
+  };
 
+  // Update the useEffect to include polling for status updates
+  useEffect(() => {
+    let isSubscribed = true;
+    
     async function loadFramesAndStatus() {
       try {
         // Get video details
@@ -273,6 +292,13 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
           status,
           created_at: videoData.created_at
         })
+        
+        // Set processing start time if it's processing
+        if (status === 'processing' && !processingStartTime) {
+          // Use created_at as the start time since updated_at might not exist yet
+          const startTime = new Date(videoData.created_at);
+          setProcessingStartTime(startTime);
+        }
         
         // Set the frame group title from the video's display name
         setFrameGroupTitle(videoData.display_name || 'Extracted Frames')
@@ -309,6 +335,24 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
     // Load immediately
     loadFramesAndStatus()
 
+    // Set up polling for status updates if video is processing
+    if (videoStatus === 'processing') {
+      const interval = setInterval(() => {
+        loadFramesAndStatus();
+        
+        // Update processing duration if we have a start time
+        if (processingStartTime) {
+          setProcessingDuration(formatDuration(processingStartTime));
+        }
+      }, 5000); // Check every 5 seconds
+      
+      setPollingInterval(interval);
+    } else if (pollingInterval) {
+      // Clear polling if video is no longer processing
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+
     // Set up real-time subscription for annotations
     const annotationsSubscription = supabase
       .channel('annotations-changes')
@@ -328,10 +372,14 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
 
     // Cleanup
     return () => {
-      isSubscribed = false
-      annotationsSubscription.unsubscribe()
+      isSubscribed = false;
+      annotationsSubscription.unsubscribe();
+      
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
     }
-  }, [videoId, loadAnnotations])
+  }, [videoId, loadAnnotations, videoStatus, processingStartTime]);
 
   if (loading) return <div>Loading frames...</div>;
   if (error) return <div>Error: {error}</div>;
@@ -352,72 +400,71 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                 }
               </p>
             </div>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${
-              (videoStatus as string) === 'completed' ? 'bg-green-100 text-green-800' :
-              (videoStatus as string) === 'error' ? 'bg-red-100 text-red-800' :
-              'bg-blue-100 text-blue-800'
-            }`}>
-              {videoStatus}
-            </span>
+            <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
+              processing
+            </div>
+          </div>
+          <div className="mt-4 border-t pt-4">
+            <div className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Processing video on the server</p>
+                {processingStartTime && (
+                  <p className="text-xs text-gray-500">
+                    Processing time: {processingDuration || formatDuration(processingStartTime)}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  This may take several minutes depending on the video size. You can leave and come back later.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Frames Section */}
-      {frames.length === 0 ? (
+      {/* Show frames section if we have frames or if processing is complete */}
+      {(frames.length > 0 || videoStatus === 'completed') && (
         <div className="bg-white rounded-lg shadow p-4">
-          {videoStatus === 'processing' ? 
-            <div className="text-blue-600">Processing video...</div> : 
-            <div className="text-gray-500">No frames available</div>
-          }
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow p-4">
-          {/* Editable Title */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex justify-between items-center mb-4">
             {isEditingTitle ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center">
                 <input
                   type="text"
                   value={frameGroupTitle}
                   onChange={(e) => setFrameGroupTitle(e.target.value)}
+                  className="border-gray-300 rounded-md shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                  autoFocus
+                  onBlur={() => {
+                    setIsEditingTitle(false);
+                    handleTitleUpdate(frameGroupTitle);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      handleTitleUpdate(frameGroupTitle)
-                    } else if (e.key === 'Escape') {
-                      setIsEditingTitle(false)
-                      setFrameGroupTitle(videoDetails?.display_name || 'Extracted Frames') // Reset to current title
+                      setIsEditingTitle(false);
+                      handleTitleUpdate(frameGroupTitle);
                     }
                   }}
-                  className="text-lg font-semibold px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  autoFocus
                 />
                 <button
-                  onClick={() => handleTitleUpdate(frameGroupTitle)}
-                  className="p-1 text-blue-600 hover:text-blue-800"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </button>
-                <button
                   onClick={() => {
-                    setIsEditingTitle(false)
-                    setFrameGroupTitle(videoDetails?.display_name || 'Extracted Frames') // Reset to current title
+                    setIsEditingTitle(false);
+                    handleTitleUpdate(frameGroupTitle);
                   }}
-                  className="p-1 text-gray-500 hover:text-gray-700"
+                  className="ml-2 p-1 text-gray-400 hover:text-gray-600"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  Save
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center">
                 <h2 className="text-lg font-semibold text-gray-900">{frameGroupTitle}</h2>
                 <button
                   onClick={() => setIsEditingTitle(true)}
-                  className="p-1 text-gray-400 hover:text-gray-600"
+                  className="ml-2 p-1 text-gray-400 hover:text-gray-600"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -426,6 +473,13 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
               </div>
             )}
           </div>
+
+          {/* Show message if completed but no frames */}
+          {frames.length === 0 && videoStatus === 'completed' && (
+            <div className="text-center py-8 text-gray-500">
+              No frames were extracted from this video.
+            </div>
+          )}
 
           <div className="relative">
             {/* Remove the gradient divs */}
@@ -532,6 +586,27 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
           </div>
         </div>
       )}
+
+      {/* Show error message if processing failed */}
+      {videoStatus === 'error' && (
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex items-start mb-4">
+            <div className="flex-shrink-0">
+              <svg className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                Error processing video
+              </h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>There was an error processing this video. Please try uploading it again.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  )
+  );
 } 
