@@ -1,120 +1,13 @@
+
+## Development Philosophy
+
+- **Simplicity First**: Each feature is implemented methodically and thoroughly before moving to the next
+- **Step-by-Step Development**: Clear progression from basic functionality to advanced features
+- **Quality Over Quantity**: Focus on perfecting core features rather than implementing many features partially
+
+
+
 ## Video Processing Implementation
-
-### 1. Update Database Schema
-Add to `supabase/init.sql`:
-```sql
-CREATE TABLE videos (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    project_id UUID REFERENCES projects(id),
-    filename TEXT NOT NULL,
-    storage_path TEXT NOT NULL,
-    status TEXT DEFAULT 'pending',
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE frames (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    video_id UUID REFERENCES videos(id),
-    frame_number INTEGER NOT NULL,
-    storage_path TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Enable RLS
-ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE frames ENABLE ROW LEVEL SECURITY;
-
--- Allow public access
-CREATE POLICY "Allow all operations for videos" ON videos FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all operations for frames" ON frames FOR ALL USING (true) WITH CHECK (true);
-```
-
-### 2. Set Up Storage Buckets
-1. Go to Supabase Dashboard
-2. Create two public buckets:
-   - `videos`
-   - `frames`
-3. Set bucket policies to public
-
-### 3. Update TypeScript Types
-Add to `src/lib/database.types.ts`:
-```typescript
-// Add to existing Database interface
-videos: {
-  Row: {
-    id: string
-    project_id: string
-    filename: string
-    storage_path: string
-    status: string
-    created_at: string
-  }
-  Insert: {
-    id?: string
-    project_id: string
-    filename: string
-    storage_path: string
-    status?: string
-    created_at?: string
-  }
-}
-frames: {
-  Row: {
-    id: string
-    video_id: string
-    frame_number: number
-    storage_path: string
-    created_at: string
-  }
-  Insert: {
-    id?: string
-    video_id: string
-    frame_number: number
-    storage_path: string
-    created_at?: string
-  }
-}
-```
-
-### 4. Set Up Cloudflare Worker
-1. Create Cloudflare account
-2. Install Wrangler CLI:
-```bash
-npm install -g wrangler
-```
-3. Create new worker:
-```bash
-wrangler init video-processor
-cd video-processor
-```
-4. Add environment variables in Cloudflare Dashboard:
-   - SUPABASE_URL
-   - SUPABASE_SERVICE_KEY
-
-### 5. Deploy
-1. Deploy Next.js app to Vercel:
-```bash
-vercel
-```
-2. Deploy Cloudflare Worker:
-```bash
-wrangler deploy
-```
-3. Add environment variables to Vercel:
-   - NEXT_PUBLIC_SUPABASE_URL
-   - NEXT_PUBLIC_SUPABASE_ANON_KEY
-   - CLOUDFLARE_WORKER_URL
-
-### 6. Usage Limits
-- Supabase Storage: 1GB (Free tier)
-- Cloudflare Worker: 100,000 requests/day (Free tier)
-- Video size: Up to 100MB
-- Processing time: ~30 seconds per video
-
-### 7. Maintenance
-- Monitor storage usage in Supabase Dashboard
-- Check worker execution logs in Cloudflare Dashboard
-- Periodically clean up old videos/frames
 
 ### 8. Future Backend Processing Architecture
 
@@ -141,7 +34,7 @@ To enable background processing and handle larger videos more efficiently, the f
 
 4. **Status Updates**
    - Real-time updates via Supabase subscriptions
-   - Progress tracking in database
+   - Progress tracking in databasea
    - Error handling and retry logic
 
 #### Implementation Steps
@@ -349,3 +242,310 @@ CREATE INDEX IF NOT EXISTS idx_videos_batch_name ON public.videos(batch_name);
    - Limit frames per batch: 100
    - Maximum concurrent uploads: 5
    - Implement lazy loading for large batches
+
+### 9. Loom URL Integration with Backend Architecture
+
+#### Overview
+Integrate Loom video processing alongside direct uploads using the backend processing architecture.
+
+#### Components Updates
+
+1. **Upload Service**
+   - Accept both direct file uploads and Loom URLs
+   - Handle Loom API authentication
+   - Download Loom videos to temporary storage
+   - Create video records with source metadata
+
+2. **Processing Queue**
+   - Add source_type field ('direct' or 'loom')
+   - Store Loom-specific metadata
+   - Handle different processing priorities
+
+3. **Worker Service**
+   - Handle both local files and Loom downloads
+   - Implement Loom API error handling
+   - Process videos based on source type
+
+#### Implementation Steps
+
+1. **Database Updates**
+   ```sql
+   -- Add source information to videos table
+   ALTER TABLE videos ADD COLUMN
+     source_type TEXT DEFAULT 'direct',
+     source_url TEXT,
+     source_metadata JSONB;
+   ```
+
+2. **Loom API Integration**
+   ```bash
+   # Environment Variables
+   LOOM_API_KEY=your_api_key
+   LOOM_API_URL=https://api.loom.com/v1
+   ```
+
+3. **Worker Implementation**
+   ```typescript
+   // Example Lambda function update
+   export async function handler(event) {
+     const { videoId, projectId, sourceType, sourceUrl } = event
+     
+     // Handle Loom videos
+     if (sourceType === 'loom') {
+       try {
+         // Fetch Loom video details
+         const loomDetails = await fetchLoomVideo(sourceUrl)
+         
+         // Download to temporary storage
+         const videoPath = await downloadLoomVideo(
+           loomDetails.download_url,
+           `/tmp/${videoId}.mp4`
+         )
+         
+         // Process with native FFmpeg
+         await processVideo(videoPath, projectId)
+         
+         // Cleanup temporary files
+         await cleanup(videoPath)
+       } catch (error) {
+         // Handle Loom-specific errors
+         await handleLoomError(error, videoId)
+       }
+     } else {
+       // Handle direct uploads
+       await processDirectUpload(event)
+     }
+   }
+   ```
+
+4. **Frontend Updates**
+   ```typescript
+   // Video upload component
+   interface VideoSource {
+     type: 'direct' | 'loom';
+     url?: string;
+     file?: File;
+   }
+   
+   async function handleVideoUpload(source: VideoSource) {
+     // Create initial record
+     const { data: video } = await supabase
+       .from('videos')
+       .insert({
+         project_id: projectId,
+         source_type: source.type,
+         source_url: source.url,
+         status: 'pending'
+       })
+       .select()
+       .single()
+     
+     // Send to processing queue
+     await fetch('/api/process-video', {
+       method: 'POST',
+       body: JSON.stringify({
+         videoId: video.id,
+         sourceType: source.type,
+         sourceUrl: source.url
+       })
+     })
+   }
+   ```
+
+#### Integration Flow
+
+1. **Loom URL Submission**
+   ```
+   User submits Loom URL
+   ↓
+   Validate URL format
+   ↓
+   Create video record (status: pending)
+   ↓
+   Send to processing queue
+   ↓
+   Return video ID to frontend
+   ```
+
+2. **Worker Processing**
+   ```
+   Receive queue message
+   ↓
+   Fetch Loom video metadata
+   ↓
+   Download video to temp storage
+   ↓
+   Process with native FFmpeg
+   ↓
+   Upload frames to storage
+   ↓
+   Update video status
+   ```
+
+3. **Error Handling**
+   ```
+   Loom API errors
+   ↓
+   Download failures
+   ↓
+   Processing errors
+   ↓
+   Update video status
+   ↓
+   Retry logic
+   ```
+
+#### Testing Plan
+
+1. **API Integration Tests**
+   - Loom API authentication
+   - Video metadata retrieval
+   - Download functionality
+   - Error handling
+
+2. **Processing Tests**
+   - Various Loom video formats
+   - Different video lengths
+   - Error conditions
+   - Retry mechanisms
+
+3. **End-to-End Tests**
+   - Complete processing flow
+   - Status updates
+   - Frame generation
+   - Cleanup procedures
+
+#### Monitoring Additions
+
+1. **Loom-specific Metrics**
+   - API response times
+   - Download speeds
+   - Processing times
+   - Error rates
+
+2. **Alerts**
+   - Loom API issues
+   - Download failures
+   - Processing errors
+   - Rate limit warnings
+
+#### Cost Considerations
+
+1. **Loom API Usage**
+   - Free tier limits
+   - API call costs
+   - Storage requirements
+   - Bandwidth costs
+
+2. **Processing Costs**
+   - Additional storage for temporary files
+   - Increased processing time
+   - Bandwidth for downloads
+
+#### Security Considerations
+
+1. **API Security**
+   - Secure API key storage
+   - Request validation
+   - URL sanitization
+   - Access controls
+
+2. **Data Handling**
+   - Temporary file management
+   - Secure downloads
+   - Data encryption
+   - Privacy compliance
+
+#### Implementation Timeline
+
+1. Database Updates (1 day)
+2. Loom API Integration (2 days)
+3. Worker Service Updates (2-3 days)
+4. Frontend Integration (1-2 days)
+5. Testing & Bug Fixes (2-3 days)
+
+#### Usage Guidelines
+
+1. **Loom URL Requirements**
+   - Format validation
+   - Access permissions
+   - Video length limits
+   - Size restrictions
+
+2. **Error Messages**
+   - User-friendly errors
+   - Technical details logging
+   - Status notifications
+   - Retry instructions
+
+3. **Performance Guidelines**
+   - Optimal video lengths
+   - Processing time estimates
+   - Queue priority handling
+   - Resource allocation
+
+#### Loom API Setup Guide
+
+1. **Get API Access**
+   - Visit [Loom Developers Portal](https://www.loom.com/developers)
+   - Create a new application
+   - Copy API key and secret
+   - Note your rate limits (typically 100 requests/hour on free tier)
+
+2. **Required Permissions**
+   - Video read access
+   - Download URL access
+   - Content API access
+
+#### Local Development Setup
+
+1. **Environment Setup**
+   ```bash
+   # Add to .env.local
+   LOOM_API_KEY=your_api_key
+   LOOM_API_URL=https://api.loom.com/v1
+   ```
+
+2. **Testing Tools**
+   ```bash
+   # Install helpful testing utilities
+   npm install -D jest-fetch-mock
+   npm install -D @types/jest
+   ```
+
+3. **Debug Configuration**
+   ```json
+   {
+     "configurations": [
+       {
+         "type": "node",
+         "request": "launch",
+         "name": "Debug Worker",
+         "skipFiles": ["<node_internals>/**"],
+         "program": "${workspaceFolder}/worker/index.ts"
+       }
+     ]
+   }
+   ```
+
+#### Deployment Checklist
+
+1. **Environment Variables**
+   - [ ] Add LOOM_API_KEY to production environment
+   - [ ] Add LOOM_API_URL to production environment
+   - [ ] Update CORS settings if needed
+
+2. **Infrastructure Updates**
+   - [ ] Increase worker memory limits for video downloads
+   - [ ] Update storage bucket permissions
+   - [ ] Configure monitoring for Loom API calls
+
+3. **Database Migration**
+   - [ ] Run source_type column migration
+   - [ ] Update existing video records
+   - [ ] Verify indexes are created
+
+4. **Testing Verification**
+   - [ ] Test with various Loom video lengths
+   - [ ] Verify error handling in production
+   - [ ] Monitor initial processing jobs
