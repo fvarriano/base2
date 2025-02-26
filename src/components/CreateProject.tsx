@@ -3,10 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL 
-  ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-  : 'http://localhost:3000'
-
 export function CreateProject() {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
