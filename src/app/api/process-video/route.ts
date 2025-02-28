@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import fetch from 'node-fetch'
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -14,7 +15,7 @@ const MAX_PROCESSING_TIME_MINUTES = 30;
 // In production, you would use a queue system like AWS SQS or a background worker
 export async function POST(request: Request) {
   try {
-    const { videoId, projectId } = await request.json()
+    const { videoId, projectId, videoUrl } = await request.json()
     
     if (!videoId || !projectId) {
       return NextResponse.json(
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
           console.log(`Generating ${numFrames} frames for video ${videoId}`);
           
           // Sample frame URLs - in a real app, these would be actual extracted frames
+          // If a videoUrl is provided, we would download the video and extract frames
           const sampleFrameUrls = [
             'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7',
             'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0',

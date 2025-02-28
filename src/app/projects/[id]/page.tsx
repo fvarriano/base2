@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { VideoUpload } from '@/components/VideoUpload'
 import { VideoFrames } from '@/components/VideoFrames'
+import { VideoUrlImport } from '@/components/VideoUrlImport'
 
 interface Project {
   id: string
@@ -140,6 +141,9 @@ export default function ProjectPage() {
           }} 
         />
 
+        {/* Add VideoUrlImport component */}
+        <VideoUrlImport projectId={project.id} />
+
         {/* Display all videos */}
         {videos.map((video) => (
           <VideoFrames key={video.id} videoId={video.id} />
@@ -147,7 +151,7 @@ export default function ProjectPage() {
 
         {videos.length === 0 && (
           <div className="bg-white rounded-lg shadow-sm p-6 text-center text-gray-500">
-            No videos uploaded yet. Upload a video to get started.
+            No videos uploaded yet. Upload a video or import from URL to get started.
           </div>
         )}
       </div>
