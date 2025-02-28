@@ -420,6 +420,36 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                 <p className="text-xs text-gray-500 mt-1">
                   This may take several minutes depending on the video size. You can leave and come back later.
                 </p>
+                
+                {/* Add button to fix stuck videos */}
+                {processingStartTime && 
+                  new Date().getTime() - processingStartTime.getTime() > 5 * 60 * 1000 && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/fix-stuck-videos', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ videoId }),
+                        });
+                        
+                        if (response.ok) {
+                          // Refresh the page to show the updated status
+                          window.location.reload();
+                        } else {
+                          console.error('Failed to fix video');
+                        }
+                      } catch (error) {
+                        console.error('Error fixing video:', error);
+                      }
+                    }}
+                    className="mt-3 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Fix Stuck Processing
+                  </button>
+                )}
               </div>
             </div>
           </div>
