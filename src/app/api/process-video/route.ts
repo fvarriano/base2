@@ -34,6 +34,7 @@ export async function POST(request: Request) {
       .single()
     
     if (videoError) {
+      console.error('Error fetching video:', videoError);
       return NextResponse.json(
         { error: `Failed to get video: ${videoError.message}` }, 
         { status: 500 }
@@ -67,117 +68,140 @@ export async function POST(request: Request) {
     
     // Update status to processing with current timestamp
     const now = new Date().toISOString()
-    await supabase
+    const { error: updateError } = await supabase
       .from('videos')
       .update({ 
         status: 'processing',
         updated_at: now,
         processing_started_at: now
       })
-      .eq('id', videoId)
+      .eq('id', videoId);
+      
+    if (updateError) {
+      console.error('Error updating video status:', updateError);
+      return NextResponse.json(
+        { error: `Failed to update video status: ${updateError.message}` }, 
+        { status: 500 }
+      );
+    }
     
-    // Simulate processing by updating status after a delay (for demo purposes)
-    // In a real app, this would be handled by a background worker
-    setTimeout(async () => {
-      try {
-        // Simulate processing time based on file size
-        const processingTime = Math.random() * 10000 + 5000; // 5-15 seconds for demo
-        
-        console.log(`Starting delayed processing for video ${videoId} (${processingTime/1000}s delay)`);
-        
-        // Generate frames for the video
-        const numFrames = Math.floor(Math.random() * 3) + 3; // 3-5 frames
-        
-        console.log(`Generating ${numFrames} frames for video ${videoId}`);
-        
-        // Create frame records in the database
-        let successfulFrames = 0;
-        
-        for (let i = 0; i < numFrames; i++) {
-          try {
-            // In a real app, you would upload the frame to storage
-            // For this demo, we'll just create the database record
-            const frameNumber = i;
-            const storagePath = `${projectId}/${videoId}/frame_${i}.jpg`;
+    // For demo purposes, process the video immediately instead of using setTimeout
+    // This ensures the processing completes reliably
+    try {
+      console.log(`Processing video ${videoId} immediately`);
+      
+      // Generate frames for the video
+      const numFrames = Math.floor(Math.random() * 3) + 3; // 3-5 frames
+      
+      console.log(`Generating ${numFrames} frames for video ${videoId}`);
+      
+      // Create frame records in the database
+      let successfulFrames = 0;
+      
+      for (let i = 0; i < numFrames; i++) {
+        try {
+          // In a real app, you would upload the frame to storage
+          // For this demo, we'll just create the database record
+          const frameNumber = i;
+          const storagePath = `${projectId}/${videoId}/frame_${i}.jpg`;
+          
+          // Create frame record in database directly without storage
+          // This simplifies the process and reduces potential points of failure
+          const { error: insertError } = await supabase
+            .from('frames')
+            .insert({
+              video_id: videoId,
+              frame_number: frameNumber,
+              storage_path: storagePath,
+              created_at: new Date().toISOString()
+            });
             
-            // Create frame record in database directly without storage
-            // This simplifies the process and reduces potential points of failure
-            const { error: insertError } = await supabase
-              .from('frames')
-              .insert({
-                video_id: videoId,
-                frame_number: frameNumber,
-                storage_path: storagePath,
-                created_at: new Date().toISOString()
-              });
-              
-            if (insertError) {
-              console.error(`Error inserting frame ${i}:`, insertError);
-              continue;
-            }
-            
-            successfulFrames++;
-            console.log(`Successfully created frame ${i} for video ${videoId}`);
-          } catch (error) {
-            console.error(`Error processing frame ${i}:`, error);
+          if (insertError) {
+            console.error(`Error inserting frame ${i}:`, insertError);
+            continue;
           }
+          
+          successfulFrames++;
+          console.log(`Successfully created frame ${i} for video ${videoId}`);
+        } catch (error) {
+          console.error(`Error processing frame ${i}:`, error);
         }
-        
-        console.log(`Successfully created ${successfulFrames} frame records out of ${numFrames} attempted`);
-        
-        if (successfulFrames === 0) {
-          // If no frames were created successfully, mark as error
-          await supabase
-            .from('videos')
-            .update({ 
-              status: 'error',
-              updated_at: new Date().toISOString(),
-              error_message: 'Failed to generate any frames'
-            })
-            .eq('id', videoId);
-            
-          console.log(`Video ${videoId} processing failed - no frames could be generated`);
-          return;
-        }
-        
-        // After the delay, update the status to completed
-        await supabase
-          .from('videos')
-          .update({ 
-            status: 'completed',
-            updated_at: new Date().toISOString(),
-            processing_completed_at: new Date().toISOString()
-          })
-          .eq('id', videoId)
-        
-        console.log(`Video ${videoId} processing completed after ${processingTime/1000} seconds with ${successfulFrames} frames`)
-      } catch (error) {
-        console.error('Error updating video status:', error)
-        
-        // Update status to error
+      }
+      
+      console.log(`Successfully created ${successfulFrames} frame records out of ${numFrames} attempted`);
+      
+      if (successfulFrames === 0) {
+        // If no frames were created successfully, mark as error
         await supabase
           .from('videos')
           .update({ 
             status: 'error',
             updated_at: new Date().toISOString(),
-            error_message: error instanceof Error ? error.message : 'Failed to process video'
+            error_message: 'Failed to generate any frames'
           })
-          .eq('id', videoId)
+          .eq('id', videoId);
+          
+        console.log(`Video ${videoId} processing failed - no frames could be generated`);
+        
+        return NextResponse.json({ 
+          message: 'Video processing failed - no frames could be generated',
+          videoId,
+          status: 'error'
+        });
       }
-    }, Math.random() * 10000 + 5000) // Random delay between 5-15 seconds for demo
-    
-    // Return immediately to client
-    return NextResponse.json({ 
-      message: 'Video processing started',
-      videoId,
-      status: 'processing'
-    })
+      
+      // Update the status to completed
+      const completionTime = new Date().toISOString();
+      const { error: completeError } = await supabase
+        .from('videos')
+        .update({ 
+          status: 'completed',
+          updated_at: completionTime,
+          processing_completed_at: completionTime
+        })
+        .eq('id', videoId);
+        
+      if (completeError) {
+        console.error('Error marking video as completed:', completeError);
+        return NextResponse.json(
+          { error: `Failed to mark video as completed: ${completeError.message}` }, 
+          { status: 500 }
+        );
+      }
+      
+      console.log(`Video ${videoId} processing completed with ${successfulFrames} frames`);
+      
+      return NextResponse.json({ 
+        message: 'Video processing completed',
+        videoId,
+        status: 'completed',
+        framesGenerated: successfulFrames
+      });
+      
+    } catch (processingError: any) {
+      console.error('Error during video processing:', processingError);
+      
+      // Update status to error
+      await supabase
+        .from('videos')
+        .update({ 
+          status: 'error',
+          updated_at: new Date().toISOString(),
+          error_message: processingError instanceof Error ? processingError.message : 'Failed to process video'
+        })
+        .eq('id', videoId);
+        
+      return NextResponse.json(
+        { error: processingError instanceof Error ? processingError.message : 'Failed to process video' }, 
+        { status: 500 }
+      );
+    }
     
   } catch (error: any) {
-    console.error('API error:', error)
+    console.error('API error:', error);
     return NextResponse.json(
       { error: error.message || 'Unknown error' }, 
       { status: 500 }
-    )
+    );
   }
 } 

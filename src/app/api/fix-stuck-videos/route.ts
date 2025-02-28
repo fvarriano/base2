@@ -95,7 +95,8 @@ export async function POST(request: Request) {
   console.log('Fix stuck videos POST request received');
   
   try {
-    const { videoId } = await request.json();
+    const body = await request.json();
+    const { videoId, action = 'fix' } = body;
     
     if (!videoId) {
       console.error('Missing videoId in request body');
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid video ID format' }, { status: 400 });
     }
     
-    console.log('Fixing specific video:', videoId);
+    console.log(`${action === 'cancel' ? 'Cancelling' : 'Fixing'} specific video:`, videoId);
     
     // Get the video details
     const { data: video, error } = await supabase
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Video not found' }, { status: 404 });
     }
     
-    console.log('Found video to fix:', video.display_name);
+    console.log('Found video to process:', video.display_name);
     
     if (!video.project_id) {
       return NextResponse.json(
@@ -136,20 +137,36 @@ export async function POST(request: Request) {
       )
     }
     
+    // If action is cancel, just mark the video as cancelled
+    if (action === 'cancel') {
+      const { error: updateError } = await supabase
+        .from('videos')
+        .update({ 
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+          processing_completed_at: new Date().toISOString(),
+          error_message: 'Processing cancelled by user'
+        })
+        .eq('id', videoId);
+      
+      if (updateError) {
+        console.error('Error cancelling video:', updateError);
+        return NextResponse.json({ error: updateError.message }, { status: 500 });
+      }
+      
+      return NextResponse.json({ 
+        message: 'Video processing cancelled',
+        videoId,
+        status: 'cancelled'
+      });
+    }
+    
+    // Otherwise, fix the video by generating frames
     // Always generate new frames when fixing a stuck video
     // This ensures we have frames even if previous attempts failed
     const numFrames = Math.floor(Math.random() * 3) + 3; // 3-5 frames to reduce potential errors
     
     console.log(`Generating ${numFrames} frames for video ${videoId} during fix`);
-    
-    // Sample frame URLs - using reliable image sources
-    const sampleFrameUrls = [
-      'https://picsum.photos/800/600',
-      'https://picsum.photos/800/600?random=1',
-      'https://picsum.photos/800/600?random=2',
-      'https://picsum.photos/800/600?random=3',
-      'https://picsum.photos/800/600?random=4'
-    ];
     
     // Create frame records in the database
     let successfulFrames = 0;

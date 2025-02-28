@@ -23,8 +23,7 @@ export async function POST(request: Request) {
     console.log('Original URL:', videoUrl);
     
     // Extract the Loom video ID directly from the URL using regex
-    // This is more reliable than URL parsing for complex URLs with query params
-    // Updated to be more permissive with the video ID format
+    // This is more permissive to handle various Loom URL formats
     const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9_-]+)/i;
     const match = videoUrl.match(loomRegex);
     
@@ -93,6 +92,7 @@ export async function POST(request: Request) {
         display_name: displayName,
         filename: filename,
         storage_path: storagePath,
+        source_url: videoUrl, // Store the original URL
         status: 'pending',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -109,8 +109,16 @@ export async function POST(request: Request) {
     console.log('Video record created, starting processing');
     
     // Start processing the video
-    // We'll use the same process-video endpoint that handles uploaded videos
-    const processResponse = await fetch(`${process.env.NEXT_PUBLIC_VERCEL_URL || ''}/api/process-video`, {
+    // Use absolute URL to ensure it works in all environments
+    const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL 
+      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` 
+      : process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : 'https://appaudits.vercel.app';
+        
+    console.log('Using base URL for API call:', baseUrl);
+    
+    const processResponse = await fetch(`${baseUrl}/api/process-video`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -119,26 +127,49 @@ export async function POST(request: Request) {
         videoId,
         projectId,
         loomVideoId,
+        videoUrl
       }),
     });
     
     if (!processResponse.ok) {
-      console.error('Process video error:', await processResponse.text());
+      console.error('Process video error status:', processResponse.status);
       
-      // If processing fails, update the video status to error
-      await supabase
-        .from('videos')
-        .update({
-          status: 'error',
-          error_message: 'Failed to start processing',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
+      try {
+        const processError = await processResponse.json() as { error?: string };
+        console.error('Process video error details:', processError);
         
-      return NextResponse.json(
-        { error: `Failed to process video: Status ${processResponse.status}` }, 
-        { status: 500 }
-      )
+        // If processing fails, update the video status to error
+        await supabase
+          .from('videos')
+          .update({
+            status: 'error',
+            error_message: processError.error || 'Failed to start processing',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+          
+        return NextResponse.json(
+          { error: `Failed to process video: ${processError.error || 'Unknown error'}` }, 
+          { status: 500 }
+        )
+      } catch (parseError) {
+        console.error('Error parsing process response:', parseError);
+        
+        // If we can't parse the response, update with generic error
+        await supabase
+          .from('videos')
+          .update({
+            status: 'error',
+            error_message: `Failed to start processing (Status ${processResponse.status})`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+          
+        return NextResponse.json(
+          { error: `Failed to process video: Status ${processResponse.status}` }, 
+          { status: 500 }
+        )
+      }
     }
     
     console.log('Video processing started successfully');
