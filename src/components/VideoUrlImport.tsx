@@ -13,19 +13,44 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
   const router = useRouter();
 
   const isValidUrl = (url: string) => {
+    // First try with the URL constructor
     try {
       new URL(url);
       return true;
     } catch (e) {
+      // If that fails, check if it's a valid URL without protocol
+      // and prepend https:// to it
+      if (url.includes('loom.com/')) {
+        try {
+          new URL(`https://${url}`);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
       return false;
     }
   };
 
   const isLoomUrl = (url: string) => {
     // Use regex to check if it's a valid Loom URL and extract the video ID
-    const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9]+)/;
+    // Updated to be more permissive with the video ID format
+    const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9_-]+)/i;
     const match = url.match(loomRegex);
-    return match && match[2] && match[2].length >= 5;
+    
+    // If regex fails, try a more manual approach
+    if (!match || !match[2]) {
+      if (url.includes('loom.com/share/')) {
+        const parts = url.split('loom.com/share/');
+        if (parts.length > 1) {
+          const manualVideoId = parts[1].split('?')[0].split('#')[0];
+          return manualVideoId && manualVideoId.length >= 5;
+        }
+      }
+      return false;
+    }
+    
+    return match[2].length >= 5;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,15 +58,20 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
     setError(null);
     setSuccess(null);
 
-    const trimmedUrl = videoUrl.trim();
+    let trimmedUrl = videoUrl.trim();
     
     if (!trimmedUrl) {
       setError('Please enter a video URL');
       return;
     }
 
+    // If URL doesn't have a protocol, add https://
+    if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+      trimmedUrl = `https://${trimmedUrl}`;
+    }
+
     if (!isValidUrl(trimmedUrl)) {
-      setError('Please enter a valid URL including https://');
+      setError('Please enter a valid URL');
       return;
     }
 

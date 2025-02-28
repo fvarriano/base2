@@ -24,22 +24,45 @@ export async function POST(request: Request) {
     
     // Extract the Loom video ID directly from the URL using regex
     // This is more reliable than URL parsing for complex URLs with query params
-    const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9]+)/;
+    // Updated to be more permissive with the video ID format
+    const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9_-]+)/i;
     const match = videoUrl.match(loomRegex);
+    
+    console.log('Regex match result:', match);
+    
+    let loomVideoId;
     
     if (!match || !match[2]) {
       console.error('Could not extract Loom video ID using regex');
-      return NextResponse.json(
-        { error: 'Invalid Loom URL format. Please use a Loom share URL (e.g., https://www.loom.com/share/abcdef123456)' }, 
-        { status: 400 }
-      )
+      
+      // Try a more manual approach as fallback
+      let manualVideoId = null;
+      if (videoUrl.includes('loom.com/share/')) {
+        const parts = videoUrl.split('loom.com/share/');
+        if (parts.length > 1) {
+          manualVideoId = parts[1].split('?')[0].split('#')[0];
+          console.log('Manual extraction attempt:', manualVideoId);
+        }
+      }
+      
+      if (manualVideoId && manualVideoId.length >= 5) {
+        console.log('Using manually extracted ID:', manualVideoId);
+        loomVideoId = manualVideoId;
+      } else {
+        // If both approaches fail, return error
+        return NextResponse.json(
+          { error: 'Invalid Loom URL format. Please use a Loom share URL (e.g., https://www.loom.com/share/abcdef123456)' }, 
+          { status: 400 }
+        )
+      }
+    } else {
+      loomVideoId = match[2];
     }
     
-    const loomVideoId = match[2];
     console.log('Extracted Loom video ID:', loomVideoId);
     
     // Validate the video ID
-    if (loomVideoId.length < 5) {
+    if (!loomVideoId || loomVideoId.length < 5) {
       console.error('Invalid Loom video ID (too short):', loomVideoId);
       return NextResponse.json(
         { error: 'Invalid Loom video ID' }, 
