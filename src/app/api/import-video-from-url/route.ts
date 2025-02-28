@@ -148,7 +148,7 @@ export async function POST(request: Request) {
         
       const processError = await processResponse.json();
       return NextResponse.json(
-        { error: `Failed to process video: ${processError.error || 'Unknown error'}` }, 
+        { error: `Failed to process video: ${typeof processError === 'object' && processError !== null && 'error' in processError ? (processError as any).error : 'Unknown error'}` }, 
         { status: 500 }
       )
     }
