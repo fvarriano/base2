@@ -20,59 +20,34 @@ export async function POST(request: Request) {
       )
     }
     
-    // Clean up the URL - remove any trailing query parameters or hash fragments
-    let cleanUrl = videoUrl.trim();
-    // Remove any query parameters
-    cleanUrl = cleanUrl.split('?')[0];
-    // Remove any hash fragments
-    cleanUrl = cleanUrl.split('#')[0];
+    console.log('Original URL:', videoUrl);
     
-    console.log('Processing URL:', cleanUrl);
+    // Extract the Loom video ID directly from the URL using regex
+    // This is more reliable than URL parsing for complex URLs with query params
+    const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9]+)/;
+    const match = videoUrl.match(loomRegex);
     
-    // Validate URL
-    let url: URL;
-    try {
-      url = new URL(cleanUrl);
-    } catch (error) {
-      console.error('URL parsing error:', error);
+    if (!match || !match[2]) {
+      console.error('Could not extract Loom video ID using regex');
       return NextResponse.json(
-        { error: 'Invalid URL format. Please provide a complete URL including https://' }, 
+        { error: 'Invalid Loom URL format. Please use a Loom share URL (e.g., https://www.loom.com/share/abcdef123456)' }, 
         { status: 400 }
       )
     }
     
-    // Currently only supporting Loom
-    if (!url.hostname.includes('loom.com')) {
-      return NextResponse.json(
-        { error: 'Currently only Loom URLs are supported' }, 
-        { status: 400 }
-      )
-    }
-    
-    // More flexible path checking for Loom
-    if (!url.pathname.includes('/share/') && !url.pathname.includes('/v/')) {
-      return NextResponse.json(
-        { error: 'Invalid Loom URL format. Please use a Loom share URL (e.g., https://www.loom.com/share/...)' }, 
-        { status: 400 }
-      )
-    }
-    
-    // Extract the Loom video ID from the URL
-    const pathParts = url.pathname.split('/');
-    const loomVideoId = pathParts[pathParts.length - 1];
-    
-    if (!loomVideoId || loomVideoId.length < 5) { // Basic validation for ID length
-      console.error('Invalid Loom video ID:', loomVideoId, 'from URL:', cleanUrl);
-      return NextResponse.json(
-        { error: 'Could not extract a valid video ID from URL' }, 
-        { status: 400 }
-      )
-    }
-    
+    const loomVideoId = match[2];
     console.log('Extracted Loom video ID:', loomVideoId);
     
-    // For demo purposes, we'll skip the oembed API call and just use a placeholder title
-    // In a production app, you would want to use the Loom API properly
+    // Validate the video ID
+    if (loomVideoId.length < 5) {
+      console.error('Invalid Loom video ID (too short):', loomVideoId);
+      return NextResponse.json(
+        { error: 'Invalid Loom video ID' }, 
+        { status: 400 }
+      )
+    }
+    
+    // For demo purposes, we'll use a placeholder title
     const displayName = `Loom Video - ${new Date().toLocaleDateString()}`;
     
     // Generate a unique ID for the video

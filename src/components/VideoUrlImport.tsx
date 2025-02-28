@@ -22,9 +22,10 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
   };
 
   const isLoomUrl = (url: string) => {
-    const cleanUrl = url.trim().toLowerCase();
-    return cleanUrl.includes('loom.com') && 
-           (cleanUrl.includes('/share/') || cleanUrl.includes('/v/'));
+    // Use regex to check if it's a valid Loom URL and extract the video ID
+    const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9]+)/;
+    const match = url.match(loomRegex);
+    return match && match[2] && match[2].length >= 5;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,7 +46,7 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
     }
 
     if (!isLoomUrl(trimmedUrl)) {
-      setError('Currently only Loom URLs are supported (e.g., https://www.loom.com/share/...)');
+      setError('Currently only Loom URLs are supported (e.g., https://www.loom.com/share/abcdef123456)');
       return;
     }
 
