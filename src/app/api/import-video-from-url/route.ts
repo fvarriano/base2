@@ -76,7 +76,6 @@ export async function POST(request: Request) {
         project_id: projectId,
         display_name: displayName,
         status: 'pending',
-        source_url: videoUrl,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       });
