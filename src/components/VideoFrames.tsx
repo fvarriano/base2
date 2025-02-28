@@ -440,6 +440,9 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                           const result = await response.json();
                           console.log('Fix result:', result);
                           
+                          // Show success message
+                          alert(`Video processing fixed! Generated ${result.framesGenerated} frames.`);
+                          
                           // Update video status and reload frames
                           setVideoStatus('completed');
                           
@@ -457,7 +460,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                         } else {
                           const errorData = await response.json();
                           console.error('Failed to fix video:', errorData);
-                          alert('Failed to fix video. Please try again.');
+                          alert(`Failed to fix video: ${errorData.error || 'Unknown error'}`);
                         }
                       } catch (error) {
                         console.error('Error fixing video:', error);

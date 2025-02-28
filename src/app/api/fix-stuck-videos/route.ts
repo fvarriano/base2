@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { validate as isValidUUID } from 'uuid';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -99,6 +100,12 @@ export async function POST(request: Request) {
     if (!videoId) {
       console.error('Missing videoId in request body');
       return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
+    }
+    
+    // Validate that videoId is a valid UUID
+    if (!isValidUUID(videoId)) {
+      console.error('Invalid UUID format for videoId:', videoId);
+      return NextResponse.json({ error: 'Invalid video ID format' }, { status: 400 });
     }
     
     console.log('Fixing specific video:', videoId);
