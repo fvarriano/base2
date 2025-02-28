@@ -17,6 +17,8 @@ export async function POST(request: Request) {
   try {
     const { videoId, projectId, videoUrl, loomVideoId } = await request.json()
     
+    console.log('Process video request received:', { videoId, projectId, loomVideoId });
+    
     if (!videoId || !projectId) {
       return NextResponse.json(
         { error: 'Video ID and Project ID are required' }, 
@@ -81,6 +83,8 @@ export async function POST(request: Request) {
         // Simulate processing time based on file size
         const processingTime = Math.random() * 10000 + 5000; // 5-15 seconds for demo
         
+        console.log(`Starting delayed processing for video ${videoId} (${processingTime/1000}s delay)`);
+        
         // Check if frames already exist for this video
         const { data: existingFrames, error: framesError } = await supabase
           .from('frames')
@@ -90,6 +94,8 @@ export async function POST(request: Request) {
         if (framesError) {
           console.error('Error checking existing frames:', framesError);
         }
+        
+        console.log(`Existing frames check for ${videoId}:`, existingFrames ? existingFrames.length : 0);
         
         // Only generate new frames if none exist
         if (!existingFrames || existingFrames.length === 0) {

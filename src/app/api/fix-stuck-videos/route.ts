@@ -11,25 +11,36 @@ const supabase = createClient(
 const MAX_PROCESSING_TIME_MINUTES = 30;
 
 export async function GET(request: Request) {
+  console.log('Fix stuck videos GET request received');
+  
   try {
-    // Get all videos in processing state
-    const { data: processingVideos, error: queryError } = await supabase
+    // Find videos that have been processing for more than 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    
+    console.log('Looking for videos processing since before:', fiveMinutesAgo);
+    
+    const { data: stuckVideos, error } = await supabase
       .from('videos')
       .select('*')
       .eq('status', 'processing')
+      .lt('processing_started_at', fiveMinutesAgo);
     
-    if (queryError) {
-      return NextResponse.json(
-        { error: `Failed to query videos: ${queryError.message}` }, 
-        { status: 500 }
-      )
+    if (error) {
+      console.error('Error fetching stuck videos:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    
+    console.log(`Found ${stuckVideos?.length || 0} stuck videos`);
+    
+    if (!stuckVideos || stuckVideos.length === 0) {
+      return NextResponse.json({ message: 'No stuck videos found' });
     }
     
     const now = new Date();
     const fixedVideos = [];
     
     // Check each processing video
-    for (const video of processingVideos || []) {
+    for (const video of stuckVideos || []) {
       if (video.processing_started_at) {
         const processingStartedAt = new Date(video.processing_started_at);
         const processingTimeMinutes = (now.getTime() - processingStartedAt.getTime()) / (1000 * 60);
@@ -80,29 +91,36 @@ export async function GET(request: Request) {
 
 // Also handle POST requests to fix a specific video
 export async function POST(request: Request) {
+  console.log('Fix stuck videos POST request received');
+  
   try {
-    const { videoId } = await request.json()
+    const { videoId } = await request.json();
     
     if (!videoId) {
-      return NextResponse.json(
-        { error: 'Video ID is required' }, 
-        { status: 400 }
-      )
+      console.error('Missing videoId in request body');
+      return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
     }
     
-    // Get video details
-    const { data: video, error: videoError } = await supabase
+    console.log('Fixing specific video:', videoId);
+    
+    // Get the video details
+    const { data: video, error } = await supabase
       .from('videos')
       .select('*')
       .eq('id', videoId)
-      .single()
+      .single();
     
-    if (videoError) {
-      return NextResponse.json(
-        { error: `Failed to get video: ${videoError.message}` }, 
-        { status: 500 }
-      )
+    if (error) {
+      console.error('Error fetching video:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    
+    if (!video) {
+      console.error('Video not found:', videoId);
+      return NextResponse.json({ error: 'Video not found' }, { status: 404 });
+    }
+    
+    console.log('Found video to fix:', video.display_name);
     
     if (!video.project_id) {
       return NextResponse.json(
