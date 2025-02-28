@@ -68,6 +68,12 @@ export async function POST(request: Request) {
     // Create a display name from the Loom title
     const displayName = oembedData.title || `Loom Video - ${new Date().toLocaleDateString()}`;
     
+    // Create a filename for the imported video
+    const filename = `loom_${loomVideoId}.mp4`;
+    
+    // Create a storage path for the video (even though we're not actually storing it)
+    const storagePath = `${projectId}/${videoId}/${filename}`;
+    
     // Create a record in the videos table
     const { error: insertError } = await supabase
       .from('videos')
@@ -75,6 +81,8 @@ export async function POST(request: Request) {
         id: videoId,
         project_id: projectId,
         display_name: displayName,
+        filename: filename,
+        storage_path: storagePath,
         status: 'pending',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
