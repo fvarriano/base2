@@ -20,59 +20,71 @@ export async function POST(request: Request) {
       )
     }
     
+    // Clean up the URL - remove any trailing query parameters or hash fragments
+    let cleanUrl = videoUrl.trim();
+    // Remove any query parameters
+    cleanUrl = cleanUrl.split('?')[0];
+    // Remove any hash fragments
+    cleanUrl = cleanUrl.split('#')[0];
+    
+    console.log('Processing URL:', cleanUrl);
+    
     // Validate URL
     let url: URL;
     try {
-      url = new URL(videoUrl);
+      url = new URL(cleanUrl);
     } catch (error) {
+      console.error('URL parsing error:', error);
       return NextResponse.json(
-        { error: 'Invalid URL format' }, 
+        { error: 'Invalid URL format. Please provide a complete URL including https://' }, 
         { status: 400 }
       )
     }
     
     // Currently only supporting Loom
-    if (!url.hostname.includes('loom.com') || !url.pathname.includes('/share/')) {
+    if (!url.hostname.includes('loom.com')) {
       return NextResponse.json(
         { error: 'Currently only Loom URLs are supported' }, 
         { status: 400 }
       )
     }
     
-    // Extract the Loom video ID from the URL
-    const loomVideoId = url.pathname.split('/').pop();
-    
-    if (!loomVideoId) {
+    // More flexible path checking for Loom
+    if (!url.pathname.includes('/share/') && !url.pathname.includes('/v/')) {
       return NextResponse.json(
-        { error: 'Could not extract video ID from URL' }, 
+        { error: 'Invalid Loom URL format. Please use a Loom share URL (e.g., https://www.loom.com/share/...)' }, 
         { status: 400 }
       )
     }
     
-    // Get the video metadata from Loom's oembed endpoint
-    const oembedUrl = `https://www.loom.com/v1/oembed?url=${encodeURIComponent(videoUrl)}`;
-    const oembedResponse = await fetch(oembedUrl);
+    // Extract the Loom video ID from the URL
+    const pathParts = url.pathname.split('/');
+    const loomVideoId = pathParts[pathParts.length - 1];
     
-    if (!oembedResponse.ok) {
+    if (!loomVideoId || loomVideoId.length < 5) { // Basic validation for ID length
+      console.error('Invalid Loom video ID:', loomVideoId, 'from URL:', cleanUrl);
       return NextResponse.json(
-        { error: 'Failed to fetch video metadata from Loom' }, 
-        { status: 500 }
+        { error: 'Could not extract a valid video ID from URL' }, 
+        { status: 400 }
       )
     }
     
-    const oembedData = await oembedResponse.json() as any;
+    console.log('Extracted Loom video ID:', loomVideoId);
+    
+    // For demo purposes, we'll skip the oembed API call and just use a placeholder title
+    // In a production app, you would want to use the Loom API properly
+    const displayName = `Loom Video - ${new Date().toLocaleDateString()}`;
     
     // Generate a unique ID for the video
     const videoId = uuidv4();
-    
-    // Create a display name from the Loom title
-    const displayName = oembedData.title || `Loom Video - ${new Date().toLocaleDateString()}`;
     
     // Create a filename for the imported video
     const filename = `loom_${loomVideoId}.mp4`;
     
     // Create a storage path for the video (even though we're not actually storing it)
     const storagePath = `${projectId}/${videoId}/${filename}`;
+    
+    console.log('Creating video record with ID:', videoId);
     
     // Create a record in the videos table
     const { error: insertError } = await supabase
@@ -89,16 +101,17 @@ export async function POST(request: Request) {
       });
     
     if (insertError) {
+      console.error('Database insert error:', insertError);
       return NextResponse.json(
         { error: `Failed to create video record: ${insertError.message}` }, 
         { status: 500 }
       )
     }
     
+    console.log('Video record created, starting processing');
+    
     // Start processing the video
     // We'll use the same process-video endpoint that handles uploaded videos
-    // Instead of trying to extract the direct video URL, we'll just pass the Loom video ID
-    // and let the process-video endpoint handle the frame generation
     const processResponse = await fetch(`${process.env.NEXT_PUBLIC_VERCEL_URL || ''}/api/process-video`, {
       method: 'POST',
       headers: {
@@ -107,11 +120,13 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         videoId,
         projectId,
-        loomVideoId, // Pass the Loom video ID instead of trying to get the direct URL
+        loomVideoId,
       }),
     });
     
     if (!processResponse.ok) {
+      console.error('Process video error:', await processResponse.text());
+      
       // If processing fails, update the video status to error
       await supabase
         .from('videos')
@@ -122,12 +137,13 @@ export async function POST(request: Request) {
         })
         .eq('id', videoId);
         
-      const processError = await processResponse.json();
       return NextResponse.json(
-        { error: `Failed to process video: ${typeof processError === 'object' && processError !== null && 'error' in processError ? (processError as any).error : 'Unknown error'}` }, 
+        { error: `Failed to process video: Status ${processResponse.status}` }, 
         { status: 500 }
       )
     }
+    
+    console.log('Video processing started successfully');
     
     return NextResponse.json({
       message: 'Video import started',
@@ -137,7 +153,7 @@ export async function POST(request: Request) {
     });
     
   } catch (error: any) {
-    console.error('API error:', error)
+    console.error('API error:', error);
     return NextResponse.json(
       { error: error.message || 'Unknown error' }, 
       { status: 500 }

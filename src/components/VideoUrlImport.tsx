@@ -9,6 +9,7 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
   const [videoUrl, setVideoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
 
   const isValidUrl = (url: string) => {
@@ -21,24 +22,29 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
   };
 
   const isLoomUrl = (url: string) => {
-    return url.includes('loom.com') && url.includes('/share/');
+    const cleanUrl = url.trim().toLowerCase();
+    return cleanUrl.includes('loom.com') && 
+           (cleanUrl.includes('/share/') || cleanUrl.includes('/v/'));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
 
-    if (!videoUrl.trim()) {
+    const trimmedUrl = videoUrl.trim();
+    
+    if (!trimmedUrl) {
       setError('Please enter a video URL');
       return;
     }
 
-    if (!isValidUrl(videoUrl)) {
-      setError('Please enter a valid URL');
+    if (!isValidUrl(trimmedUrl)) {
+      setError('Please enter a valid URL including https://');
       return;
     }
 
-    if (!isLoomUrl(videoUrl)) {
+    if (!isLoomUrl(trimmedUrl)) {
       setError('Currently only Loom URLs are supported (e.g., https://www.loom.com/share/...)');
       return;
     }
@@ -52,7 +58,7 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          videoUrl,
+          videoUrl: trimmedUrl,
           projectId,
         }),
       });
@@ -64,11 +70,19 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
 
       const data = await response.json();
       
+      // Show success message
+      setSuccess('Video import started successfully! Processing in the background...');
+      
       // Redirect to the project page to see the processing video
       router.refresh();
       
       // Clear the input
       setVideoUrl('');
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
     } catch (err) {
       console.error('Error importing video:', err);
       setError(err instanceof Error ? err.message : 'Failed to import video');
@@ -102,6 +116,10 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
 
         {error && (
           <div className="text-red-500 text-sm">{error}</div>
+        )}
+        
+        {success && (
+          <div className="text-green-500 text-sm">{success}</div>
         )}
 
         <button
