@@ -62,39 +62,6 @@ export async function POST(request: Request) {
     
     const oembedData = await oembedResponse.json() as any;
     
-    // Extract the direct video URL from the HTML (this is a bit hacky but works for now)
-    // In a production app, you might want to use the Loom API with proper authentication
-    const html = oembedData.html;
-    const srcMatch = html.match(/src="([^"]+)"/);
-    
-    if (!srcMatch || !srcMatch[1]) {
-      return NextResponse.json(
-        { error: 'Could not extract video source from Loom embed' }, 
-        { status: 500 }
-      )
-    }
-    
-    // Get the iframe URL
-    const iframeUrl = srcMatch[1];
-    
-    // Fetch the iframe content to find the actual video URL
-    const iframeResponse = await fetch(iframeUrl);
-    const iframeContent = await iframeResponse.text();
-    
-    // Look for the video source in the iframe content
-    // This is a simplified approach and might break if Loom changes their embed structure
-    const videoSrcMatch = iframeContent.match(/"playbackUrl":"([^"]+)"/);
-    
-    if (!videoSrcMatch || !videoSrcMatch[1]) {
-      return NextResponse.json(
-        { error: 'Could not extract video source from Loom iframe' }, 
-        { status: 500 }
-      )
-    }
-    
-    // Get the actual video URL (need to unescape it)
-    const videoSrc = videoSrcMatch[1].replace(/\\u002F/g, '/');
-    
     // Generate a unique ID for the video
     const videoId = uuidv4();
     
@@ -123,6 +90,8 @@ export async function POST(request: Request) {
     
     // Start processing the video
     // We'll use the same process-video endpoint that handles uploaded videos
+    // Instead of trying to extract the direct video URL, we'll just pass the Loom video ID
+    // and let the process-video endpoint handle the frame generation
     const processResponse = await fetch(`${process.env.NEXT_PUBLIC_VERCEL_URL || ''}/api/process-video`, {
       method: 'POST',
       headers: {
@@ -131,7 +100,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         videoId,
         projectId,
-        videoUrl: videoSrc, // Pass the direct video URL for processing
+        loomVideoId, // Pass the Loom video ID instead of trying to get the direct URL
       }),
     });
     

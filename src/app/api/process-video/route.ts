@@ -15,7 +15,7 @@ const MAX_PROCESSING_TIME_MINUTES = 30;
 // In production, you would use a queue system like AWS SQS or a background worker
 export async function POST(request: Request) {
   try {
-    const { videoId, projectId, videoUrl } = await request.json()
+    const { videoId, projectId, videoUrl, loomVideoId } = await request.json()
     
     if (!videoId || !projectId) {
       return NextResponse.json(
