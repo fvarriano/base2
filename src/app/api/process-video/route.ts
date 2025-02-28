@@ -80,62 +80,107 @@ export async function POST(request: Request) {
         // Simulate processing time based on file size
         const processingTime = Math.random() * 10000 + 5000; // 5-15 seconds for demo
         
-        // Generate some sample frames (in a real app, you would extract these from the video)
-        const numFrames = Math.floor(Math.random() * 5) + 3; // 3-7 frames
+        // Check if frames already exist for this video
+        const { data: existingFrames, error: framesError } = await supabase
+          .from('frames')
+          .select('id')
+          .eq('video_id', videoId)
         
-        console.log(`Generating ${numFrames} frames for video ${videoId}`);
+        if (framesError) {
+          console.error('Error checking existing frames:', framesError);
+        }
         
-        // Sample frame URLs - in a real app, these would be actual extracted frames
-        const sampleFrameUrls = [
-          'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7',
-          'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0',
-          'https://images.unsplash.com/photo-1611162618071-b39a2ec055fb',
-          'https://images.unsplash.com/photo-1611162616475-b1a91bd5a1d6',
-          'https://images.unsplash.com/photo-1611162617263-4ec3a5c84103',
-          'https://images.unsplash.com/photo-1611162616390-aaa3b4444fff',
-          'https://images.unsplash.com/photo-1611162618479-ee4d1e0e5ac9'
-        ];
-        
-        // Create frame records in the database
-        for (let i = 0; i < numFrames; i++) {
-          // In a real app, you would upload the frame to storage
-          // For this demo, we'll just create the database record
-          const frameNumber = i;
-          const storagePath = `${projectId}/${videoId}/frame_${i}.jpg`;
+        // Only generate new frames if none exist
+        if (!existingFrames || existingFrames.length === 0) {
+          // Generate some sample frames (in a real app, you would extract these from the video)
+          const numFrames = Math.floor(Math.random() * 5) + 3; // 3-7 frames
           
-          // Simulate uploading the frame to storage
-          // In a real app, you would download the frame from the video and upload it
-          const sampleImageUrl = sampleFrameUrls[i % sampleFrameUrls.length];
-          const response = await fetch(sampleImageUrl);
-          const imageBuffer = await response.arrayBuffer();
+          console.log(`Generating ${numFrames} frames for video ${videoId}`);
           
-          // Upload the image to Supabase storage
-          const { data: uploadData, error: uploadError } = await supabase
-            .storage
-            .from('frames')
-            .upload(storagePath, imageBuffer, {
-              contentType: 'image/jpeg',
-              upsert: true
-            });
+          // Sample frame URLs - in a real app, these would be actual extracted frames
+          const sampleFrameUrls = [
+            'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7',
+            'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0',
+            'https://images.unsplash.com/photo-1611162618071-b39a2ec055fb',
+            'https://images.unsplash.com/photo-1611162616475-b1a91bd5a1d6',
+            'https://images.unsplash.com/photo-1611162617263-4ec3a5c84103',
+            'https://images.unsplash.com/photo-1611162616390-aaa3b4444fff',
+            'https://images.unsplash.com/photo-1611162618479-ee4d1e0e5ac9'
+          ];
+          
+          // Create frame records in the database
+          const framePromises = [];
+          
+          for (let i = 0; i < numFrames; i++) {
+            // In a real app, you would upload the frame to storage
+            // For this demo, we'll just create the database record
+            const frameNumber = i;
+            const storagePath = `${projectId}/${videoId}/frame_${i}.jpg`;
             
-          if (uploadError) {
-            console.error(`Error uploading frame ${i}:`, uploadError);
-            continue;
+            try {
+              // Simulate uploading the frame to storage
+              // In a real app, you would download the frame from the video and upload it
+              const sampleImageUrl = sampleFrameUrls[i % sampleFrameUrls.length];
+              const response = await fetch(sampleImageUrl);
+              
+              if (!response.ok) {
+                throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+              }
+              
+              const imageBuffer = await response.arrayBuffer();
+              
+              // Upload the image to Supabase storage
+              const { data: uploadData, error: uploadError } = await supabase
+                .storage
+                .from('frames')
+                .upload(storagePath, imageBuffer, {
+                  contentType: 'image/jpeg',
+                  upsert: true
+                });
+                
+              if (uploadError) {
+                console.error(`Error uploading frame ${i}:`, uploadError);
+                continue;
+              }
+              
+              // Create frame record in database
+              const framePromise = supabase
+                .from('frames')
+                .insert({
+                  video_id: videoId,
+                  frame_number: frameNumber,
+                  storage_path: storagePath,
+                  created_at: new Date().toISOString()
+                });
+                
+              framePromises.push(framePromise);
+            } catch (error) {
+              console.error(`Error processing frame ${i}:`, error);
+            }
           }
           
-          // Create frame record in database
-          const { error: frameError } = await supabase
-            .from('frames')
-            .insert({
-              video_id: videoId,
-              frame_number: frameNumber,
-              storage_path: storagePath,
-              created_at: new Date().toISOString()
-            });
-            
-          if (frameError) {
-            console.error(`Error creating frame ${i} record:`, frameError);
+          // Wait for all frame insertions to complete
+          const frameResults = await Promise.allSettled(framePromises);
+          const successfulFrames = frameResults.filter(result => result.status === 'fulfilled').length;
+          
+          console.log(`Successfully created ${successfulFrames} frame records out of ${numFrames} attempted`);
+          
+          if (successfulFrames === 0) {
+            // If no frames were created successfully, mark as error
+            await supabase
+              .from('videos')
+              .update({ 
+                status: 'error',
+                updated_at: new Date().toISOString(),
+                error_message: 'Failed to generate any frames'
+              })
+              .eq('id', videoId);
+              
+            console.log(`Video ${videoId} processing failed - no frames could be generated`);
+            return;
           }
+        } else {
+          console.log(`Video ${videoId} already has ${existingFrames.length} frames, skipping frame generation`);
         }
         
         // After the delay, update the status to completed
@@ -148,7 +193,15 @@ export async function POST(request: Request) {
           })
           .eq('id', videoId)
           
-        console.log(`Video ${videoId} processing completed after ${processingTime/1000} seconds with ${numFrames} frames`)
+        // Get the final count of frames
+        const { data: finalFrames } = await supabase
+          .from('frames')
+          .select('id')
+          .eq('video_id', videoId)
+        
+        const frameCount = finalFrames ? finalFrames.length : 0;
+        
+        console.log(`Video ${videoId} processing completed after ${processingTime/1000} seconds with ${frameCount} frames`)
       } catch (error) {
         console.error('Error updating video status:', error)
         
@@ -158,7 +211,7 @@ export async function POST(request: Request) {
           .update({ 
             status: 'error',
             updated_at: new Date().toISOString(),
-            error_message: 'Failed to process video'
+            error_message: error instanceof Error ? error.message : 'Failed to process video'
           })
           .eq('id', videoId)
       }

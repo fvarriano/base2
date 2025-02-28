@@ -421,7 +421,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                   This may take several minutes depending on the video size. You can leave and come back later.
                 </p>
                 
-                {/* Add button to fix stuck videos */}
+                {/* Fix Stuck Processing button - update to avoid full page reload */}
                 {processingStartTime && 
                   new Date().getTime() - processingStartTime.getTime() > 5 * 60 * 1000 && (
                   <button
@@ -436,13 +436,32 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                         });
                         
                         if (response.ok) {
-                          // Refresh the page to show the updated status
-                          window.location.reload();
+                          // Instead of reloading the page, update the state
+                          const result = await response.json();
+                          console.log('Fix result:', result);
+                          
+                          // Update video status and reload frames
+                          setVideoStatus('completed');
+                          
+                          // Reload frames without page refresh
+                          const { data: frameData } = await supabase
+                            .from('frames')
+                            .select('*')
+                            .eq('video_id', videoId)
+                            .order('frame_number');
+                            
+                          if (frameData) {
+                            setFrames(frameData as Frame[]);
+                            await loadAnnotations(frameData as Frame[]);
+                          }
                         } else {
-                          console.error('Failed to fix video');
+                          const errorData = await response.json();
+                          console.error('Failed to fix video:', errorData);
+                          alert('Failed to fix video. Please try again.');
                         }
                       } catch (error) {
                         console.error('Error fixing video:', error);
+                        alert('Error fixing video. Please try again.');
                       }
                     }}
                     className="mt-3 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -537,11 +556,9 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                           onError={(e) => {
                             console.error('Error loading image:', frame.storage_path);
                             const imgElement = e.target as HTMLImageElement;
-                            const fallbackDiv = document.createElement('div');
-                            fallbackDiv.className = 'absolute inset-0 flex items-center justify-center bg-gray-100 text-gray-500';
-                            fallbackDiv.textContent = `Frame ${frame.frame_number + 1} (Failed to load)`;
-                            imgElement.parentElement?.appendChild(fallbackDiv);
-                            imgElement.style.display = 'none';
+                            // Create a fallback placeholder with frame number
+                            imgElement.src = `https://via.placeholder.com/640x360/f3f4f6/9ca3af?text=Frame+${frame.frame_number + 1}`;
+                            imgElement.style.objectFit = 'cover';
                           }}
                         />
                         {/* Delete Button - Visible on hover */}
