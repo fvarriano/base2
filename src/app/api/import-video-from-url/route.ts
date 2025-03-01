@@ -108,93 +108,34 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    // Try to use the external video processor first
-    const videoProcessorUrl = process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL || 'https://lucky-fire-7d58.appaudits.workers.dev';
-    let useInternalProcessor = false;
-    let processResponse;
+    // Use our own process-video endpoint directly
+    // Get the base URL for our own API
+    const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL 
+      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` 
+      : process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : 'https://appaudits.vercel.app';
     
-    console.log('Attempting to use external video processor:', videoProcessorUrl);
+    console.log('Using API URL:', baseUrl);
     
-    try {
-      processResponse = await fetch(`${videoProcessorUrl}/process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          videoId,
-          projectId,
-          loomVideoId,
-          videoUrl,
-          filename,
-          storagePath,
-          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-          supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-          displayName
-        }),
-        // Set a timeout to prevent hanging if the external service is down
-        signal: AbortSignal.timeout(5000)
-      });
-      
-      if (!processResponse.ok) {
-        console.log('External processor failed, will use internal processor');
-        useInternalProcessor = true;
-      }
-    } catch (error) {
-      console.error('Error calling external video processor:', error);
-      console.log('Will use internal processor instead');
-      useInternalProcessor = true;
-    }
+    const processResponse = await fetch(`${baseUrl}/api/process-video`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        videoId,
+        projectId,
+        loomVideoId,
+        videoUrl
+      }),
+    });
     
-    // If external processor failed, use our own process-video endpoint
-    if (useInternalProcessor) {
-      console.log('Using internal video processor');
-      
-      // Get the base URL for our own API
-      const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL 
-        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` 
-        : process.env.VERCEL_URL 
-          ? `https://${process.env.VERCEL_URL}` 
-          : 'https://appaudits.vercel.app';
-      
-      console.log('Using internal API URL:', baseUrl);
+    if (!processResponse.ok) {
+      console.error('Process video error status:', processResponse.status);
       
       try {
-        processResponse = await fetch(`${baseUrl}/api/fix-stuck-videos`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            videoId,
-            action: 'fix'
-          }),
-        });
-      } catch (internalError) {
-        console.error('Error calling internal processor:', internalError);
-        
-        // Update the video status to error
-        await supabase
-          .from('videos')
-          .update({
-            status: 'error',
-            error_message: 'Failed to process video: Internal processor error',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
-          
-        return NextResponse.json(
-          { error: 'Failed to process video: Internal processor error' }, 
-          { status: 500 }
-        );
-      }
-    }
-    
-    if (!processResponse || !processResponse.ok) {
-      console.error('Process video error status:', processResponse?.status);
-      
-      try {
-        const processError = await processResponse?.json() as { error?: string };
+        const processError = await processResponse.json() as { error?: string };
         console.error('Process video error details:', processError);
         
         // If processing fails, update the video status to error
@@ -202,13 +143,13 @@ export async function POST(request: Request) {
           .from('videos')
           .update({
             status: 'error',
-            error_message: processError?.error || 'Failed to start processing',
+            error_message: processError.error || 'Failed to start processing',
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId);
           
         return NextResponse.json(
-          { error: `Failed to process video: ${processError?.error || 'Unknown error'}` }, 
+          { error: `Failed to process video: ${processError.error || 'Unknown error'}` }, 
           { status: 500 }
         )
       } catch (parseError) {
@@ -219,13 +160,13 @@ export async function POST(request: Request) {
           .from('videos')
           .update({
             status: 'error',
-            error_message: `Failed to start processing (Status ${processResponse?.status})`,
+            error_message: `Failed to start processing (Status ${processResponse.status})`,
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId);
           
         return NextResponse.json(
-          { error: `Failed to process video: Status ${processResponse?.status}` }, 
+          { error: `Failed to process video: Status ${processResponse.status}` }, 
           { status: 500 }
         )
       }
