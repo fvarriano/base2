@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { validate as isValidUUID } from 'uuid';
-import { processVideo } from '@/lib/videoProcessing';
+import axios from 'axios';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -162,25 +162,40 @@ export async function POST(request: Request) {
       });
     }
     
-    // Process the video using our video processing service
-    console.log(`Starting real video processing for video ${videoId}`);
+    // Process the video using our process-video API endpoint
+    console.log(`Starting video processing for video ${videoId}`);
     
-    const result = await processVideo(videoId);
-    
-    if (!result.success) {
+    try {
+      // Call the process-video API endpoint
+      const response = await axios.post(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/process-video`, {
+        videoId
+      });
+      
+      return NextResponse.json({ 
+        message: 'Video processed successfully with real frames',
+        videoId,
+        framesGenerated: response.data.framesGenerated
+      });
+    } catch (processError: any) {
+      console.error('Error processing video:', processError);
+      
+      // If there's a response with error details
+      if (processError.response && processError.response.data) {
+        return NextResponse.json({ 
+          message: 'Failed to process video',
+          videoId,
+          error: processError.response.data.error || 'Unknown error',
+          status: 'error'
+        }, { status: 500 });
+      }
+      
       return NextResponse.json({ 
         message: 'Failed to process video',
         videoId,
-        error: result.error,
+        error: processError.message || 'Unknown error',
         status: 'error'
       }, { status: 500 });
     }
-    
-    return NextResponse.json({ 
-      message: 'Video processed successfully with real frames',
-      videoId,
-      framesGenerated: result.framesGenerated
-    });
     
   } catch (error: any) {
     console.error('API error:', error)

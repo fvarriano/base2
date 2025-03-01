@@ -4,8 +4,8 @@ import { v4 as uuidv4 } from 'uuid'
 // Remove the node-fetch import as we won't need it
 // import fetch from 'node-fetch'
 
-// Import the POST handler from fix-stuck-videos directly
-import { POST as fixStuckVideosHandler } from '../fix-stuck-videos/route'
+// Import the axios library for making HTTP requests
+import axios from 'axios'
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -115,90 +115,12 @@ export async function POST(request: Request) {
     console.log('Video record created, starting processing');
     
     try {
-      // Instead of making an HTTP request, directly call the fix-stuck-videos handler
-      // Create a new Request object to pass to the handler
-      const fixRequest = new Request('http://localhost/api/fix-stuck-videos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          videoId,
-          action: 'fix'
-        })
+      // Call the process-video API endpoint
+      const processResponse = await axios.post(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/process-video`, {
+        videoId
       });
       
-      // Call the handler directly
-      const processResponse = await fixStuckVideosHandler(fixRequest);
-      console.log('Process response status:', processResponse.status);
-      
-      if (processResponse.status !== 200) {
-        console.error('Process video error status:', processResponse.status);
-        
-        try {
-          const processErrorText = await processResponse.text();
-          let processError;
-          try {
-            processError = JSON.parse(processErrorText);
-          } catch (e) {
-            processError = { error: processErrorText };
-          }
-          
-          console.error('Process video error details:', processError);
-          
-          // If processing fails, update the video status to error
-          await supabase
-            .from('videos')
-            .update({
-              status: 'error',
-              error_message: processError.error || 'Failed to start processing',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', videoId);
-            
-          return NextResponse.json(
-            { error: `Failed to process video: ${processError.error || 'Unknown error'}` }, 
-            { status: 500 }
-          )
-        } catch (parseError) {
-          console.error('Error parsing process response:', parseError);
-          
-          // If we can't parse the response, update with generic error
-          await supabase
-            .from('videos')
-            .update({
-              status: 'error',
-              error_message: `Failed to start processing (Status ${processResponse.status})`,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', videoId);
-            
-          return NextResponse.json(
-            { error: `Failed to process video: Status ${processResponse.status}` }, 
-            { status: 500 }
-          )
-        }
-      }
-      
-      // Try to parse the successful response
-      try {
-        const processResultText = await processResponse.text();
-        const processResult = JSON.parse(processResultText);
-        console.log('Process result:', processResult);
-      } catch (parseError) {
-        console.error('Error parsing successful response (non-critical):', parseError);
-      }
-      
-      console.log('Video processing started successfully');
-      
-      // Update the video status to processing
-      await supabase
-        .from('videos')
-        .update({
-          status: 'processing',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
+      console.log('Process response:', processResponse.data);
       
       return NextResponse.json({
         message: 'Video import started',
@@ -206,21 +128,21 @@ export async function POST(request: Request) {
         displayName,
         status: 'processing'
       });
-    } catch (fetchError) {
-      console.error('Fetch error during processing:', fetchError);
+    } catch (processError: any) {
+      console.error('Error during processing:', processError);
       
       // Update the video status to error
       await supabase
         .from('videos')
         .update({
           status: 'error',
-          error_message: 'Network error while processing video',
+          error_message: processError.message || 'Failed to start processing',
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId);
       
       return NextResponse.json(
-        { error: 'Network error while processing video' }, 
+        { error: `Failed to process video: ${processError.message || 'Unknown error'}` }, 
         { status: 500 }
       );
     }
