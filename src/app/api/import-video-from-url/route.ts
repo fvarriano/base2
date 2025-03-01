@@ -109,16 +109,12 @@ export async function POST(request: Request) {
     console.log('Video record created, starting processing');
     
     // Start processing the video
-    // Use absolute URL to ensure it works in all environments
-    const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL 
-      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` 
-      : process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}` 
-        : 'https://appaudits.vercel.app';
+    // Use the video processor URL from environment variables
+    const videoProcessorUrl = process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL || 'https://lucky-fire-7d58.appaudits.workers.dev';
         
-    console.log('Using base URL for API call:', baseUrl);
+    console.log('Using video processor URL for API call:', videoProcessorUrl);
     
-    const processResponse = await fetch(`${baseUrl}/api/process-video`, {
+    const processResponse = await fetch(`${videoProcessorUrl}/process`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
