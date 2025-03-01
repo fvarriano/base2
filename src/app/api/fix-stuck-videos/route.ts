@@ -205,7 +205,7 @@ export async function POST(request: Request) {
         
         try {
           // Upload the SVG placeholder image to storage
-          const { error: uploadError } = await supabase
+          const { error: uploadError, data: uploadData } = await supabase
             .storage
             .from('frames')
             .upload(storagePath, svgBuffer, {
@@ -217,6 +217,22 @@ export async function POST(request: Request) {
             console.error(`Error uploading placeholder for frame ${i}:`, uploadError);
           } else {
             console.log(`Successfully uploaded placeholder for frame ${i}`);
+            
+            // Make the file publicly accessible
+            const { error: publicError } = await supabase
+              .storage
+              .from('frames')
+              .update(storagePath, svgBuffer, {
+                contentType: 'image/svg+xml',
+                upsert: true,
+                cacheControl: '3600'
+              });
+              
+            if (publicError) {
+              console.error(`Error making frame ${i} public:`, publicError);
+            } else {
+              console.log(`Successfully made frame ${i} public`);
+            }
           }
         } catch (uploadError) {
           console.error(`Error uploading placeholder for frame ${i}:`, uploadError);

@@ -615,107 +615,152 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                 </p>
                 
                 {/* Processing control buttons */}
-                {processingStartTime && (
-                  <div className="mt-3 flex space-x-2">
-                    {/* Fix Stuck Processing button - only show after 5 minutes */}
-                    {new Date().getTime() - processingStartTime.getTime() > 5 * 60 * 1000 && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const response = await fetch('/api/fix-stuck-videos', {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                              },
-                              body: JSON.stringify({ videoId }),
-                            });
-                            
-                            if (response.ok) {
-                              // Instead of reloading the page, update the state
-                              const result = await response.json();
-                              console.log('Fix result:', result);
-                              
-                              // Show success message
-                              alert(`Video processing fixed! Generated ${result.framesGenerated} frames.`);
-                              
-                              // Update video status and reload frames
-                              setVideoStatus('completed');
-                              
-                              // Reload frames without page refresh
-                              const { data: frameData } = await supabase
-                                .from('frames')
-                                .select('*')
-                                .eq('video_id', videoId)
-                                .order('frame_number');
-                                
-                              if (frameData) {
-                                setFrames(frameData as Frame[]);
-                                await loadAnnotations(frameData as Frame[]);
-                              }
-                            } else {
-                              const errorData = await response.json();
-                              console.error('Failed to fix video:', errorData);
-                              alert(`Failed to fix video: ${errorData.error || 'Unknown error'}`);
-                            }
-                          } catch (error) {
-                            console.error('Error fixing video:', error);
-                            alert('Error fixing video. Please try again.');
-                          }
-                        }}
-                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                      >
-                        Fix Stuck Processing
-                      </button>
-                    )}
-                    
-                    {/* Cancel Processing button - always show */}
+                <div className="mt-4 flex space-x-3">
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Refresh frames without calling the API
+                        setLoading(true);
+                        
+                        // Get frames from database
+                        const { data: frameData, error: frameError } = await supabase
+                          .from('frames')
+                          .select('*')
+                          .eq('video_id', videoId)
+                          .order('frame_number');
+                          
+                        if (frameError) throw frameError;
+                        
+                        const frames = (frameData || []).filter(frame => frame.video_id !== null) as Frame[];
+                        setFrames(frames);
+                        
+                        // Load annotations if we have frames
+                        if (frames.length > 0) {
+                          await loadAnnotations(frames);
+                        }
+                        
+                        // Check if video status has changed
+                        const { data: videoData, error: videoError } = await supabase
+                          .from('videos')
+                          .select('status')
+                          .eq('id', videoId)
+                          .single();
+                          
+                        if (!videoError && videoData && videoData.status !== videoStatus) {
+                          setVideoStatus(videoData.status as VideoStatus);
+                        }
+                        
+                        // Clear image errors to retry loading
+                        setImageErrors({});
+                      } catch (error) {
+                        console.error('Error refreshing frames:', error);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    Refresh Frames
+                  </button>
+                  
+                  {/* Fix Stuck Processing button - only show after 5 minutes */}
+                  {processingStartTime && new Date().getTime() - processingStartTime.getTime() > 5 * 60 * 1000 && (
                     <button
                       onClick={async () => {
-                        if (confirm('Are you sure you want to cancel processing? This cannot be undone.')) {
-                          try {
-                            const response = await fetch('/api/fix-stuck-videos', {
-                              method: 'POST',
-                              headers: {
-                                'Content-Type': 'application/json',
-                              },
-                              body: JSON.stringify({ 
-                                videoId,
-                                action: 'cancel'
-                              }),
-                            });
+                        try {
+                          const response = await fetch('/api/fix-stuck-videos', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ videoId }),
+                          });
+                          
+                          if (response.ok) {
+                            // Instead of reloading the page, update the state
+                            const result = await response.json();
+                            console.log('Fix result:', result);
                             
-                            if (response.ok) {
-                              const result = await response.json();
-                              console.log('Cancel result:', result);
+                            // Show success message
+                            alert(`Video processing fixed! Generated ${result.framesGenerated} frames.`);
+                            
+                            // Update video status and reload frames
+                            setVideoStatus('completed');
+                            
+                            // Reload frames without page refresh
+                            const { data: frameData } = await supabase
+                              .from('frames')
+                              .select('*')
+                              .eq('video_id', videoId)
+                              .order('frame_number');
                               
-                              // Show success message
-                              alert('Video processing cancelled successfully.');
-                              
-                              // Update video status
-                              setVideoStatus('error');
-                              
-                              // Clear polling interval
-                              if (pollingInterval) {
-                                clearInterval(pollingInterval);
-                                setPollingInterval(null);
-                              }
-                            } else {
-                              const errorData = await response.json();
-                              console.error('Failed to cancel video:', errorData);
-                              alert(`Failed to cancel video: ${errorData.error || 'Unknown error'}`);
+                            if (frameData) {
+                              setFrames(frameData as Frame[]);
+                              await loadAnnotations(frameData as Frame[]);
                             }
-                          } catch (error) {
-                            console.error('Error cancelling video:', error);
-                            alert('Error cancelling video. Please try again.');
+                          } else {
+                            const errorData = await response.json();
+                            console.error('Failed to fix video:', errorData);
+                            alert(`Failed to fix video: ${errorData.error || 'Unknown error'}`);
                           }
+                        } catch (error) {
+                          console.error('Error fixing video:', error);
+                          alert('Error fixing video. Please try again.');
                         }
                       }}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
-                      Cancel Processing
+                      Fix Stuck Processing
                     </button>
-                  </div>
-                )}
+                  )}
+                  
+                  {/* Cancel Processing button - always show */}
+                  <button
+                    onClick={async () => {
+                      if (confirm('Are you sure you want to cancel processing? This cannot be undone.')) {
+                        try {
+                          const response = await fetch('/api/fix-stuck-videos', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ 
+                              videoId,
+                              action: 'cancel'
+                            }),
+                          });
+                          
+                          if (response.ok) {
+                            const result = await response.json();
+                            console.log('Cancel result:', result);
+                            
+                            // Show success message
+                            alert('Video processing cancelled successfully.');
+                            
+                            // Update video status
+                            setVideoStatus('error');
+                            
+                            // Clear polling interval
+                            if (pollingInterval) {
+                              clearInterval(pollingInterval);
+                              setPollingInterval(null);
+                            }
+                          } else {
+                            const errorData = await response.json();
+                            console.error('Failed to cancel video:', errorData);
+                            alert(`Failed to cancel video: ${errorData.error || 'Unknown error'}`);
+                          }
+                        } catch (error) {
+                          console.error('Error cancelling video:', error);
+                          alert('Error cancelling video. Please try again.');
+                        }
+                      }
+                    }}
+                    className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  >
+                    Cancel Processing
+                  </button>
+                </div>
               </div>
             </div>
           </div>
