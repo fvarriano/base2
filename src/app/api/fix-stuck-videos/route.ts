@@ -178,6 +178,29 @@ export async function POST(request: Request) {
         const frameNumber = i;
         const storagePath = `${video.project_id}/${videoId}/frame_${i}.jpg`;
         
+        // Create a placeholder image in storage
+        // This is a base64 encoded 1x1 transparent pixel
+        const placeholderImage = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+        
+        try {
+          // Upload the placeholder image to storage
+          const { error: uploadError } = await supabase
+            .storage
+            .from('frames')
+            .upload(storagePath, placeholderImage, {
+              contentType: 'image/gif',
+              upsert: true
+            });
+            
+          if (uploadError) {
+            console.error(`Error uploading placeholder for frame ${i}:`, uploadError);
+          } else {
+            console.log(`Successfully uploaded placeholder for frame ${i}`);
+          }
+        } catch (uploadError) {
+          console.error(`Error uploading placeholder for frame ${i}:`, uploadError);
+        }
+        
         // Create frame record in database directly without storage
         // This simplifies the process and reduces potential points of failure
         const { error: insertError } = await supabase
