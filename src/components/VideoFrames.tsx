@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Image from 'next/image'
+import { RefreshCw } from 'lucide-react'
 
 interface VideoFramesProps {
   videoId: string
@@ -383,6 +384,52 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
     }
   }, [videoId, loadAnnotations, videoStatus, processingStartTime]);
 
+  // Fix the type issues in the handleRefresh function
+  const handleRefresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Fetch the video details again
+      const { data: videoData, error: videoError } = await supabase
+        .from('videos')
+        .select('*')
+        .eq('id', videoId)
+        .single();
+      
+      if (videoError) throw videoError;
+      
+      if (videoData) {
+        // Cast the status to VideoStatus to fix type error
+        setVideoDetails(videoData as Video);
+        setVideoStatus(videoData.status as VideoStatus);
+        setFrameGroupTitle(videoData.display_name || 'Extracted Frames');
+      }
+      
+      // Fetch the frames again
+      const { data: framesData, error: framesError } = await supabase
+        .from('frames')
+        .select('*')
+        .eq('video_id', videoId)
+        .order('frame_number');
+      
+      if (framesError) throw framesError;
+      
+      if (framesData) {
+        // Cast the frames data to Frame[] to fix type error
+        setFrames(framesData as Frame[]);
+        // Reset image errors on refresh
+        setImageErrors({});
+        
+        // Load annotations for the frames
+        await loadAnnotations(framesData as Frame[]);
+      }
+    } catch (err) {
+      console.error('Error refreshing data:', err);
+      setError('Failed to refresh data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [videoId, loadAnnotations]);
+
   // Render the frames section
   const renderFrames = () => {
     if (frames.length === 0) {
@@ -714,6 +761,40 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
             </div>
           )}
         </div>
+        
+        {/* Add this after the title section in the return statement, before the frames grid */}
+        {frames.length > 0 && (
+          <div className="mb-6 flex flex-col gap-2">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0 text-blue-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-blue-800">Placeholder Frames</h3>
+                  <div className="mt-2 text-sm text-blue-700">
+                    <p>
+                      These are placeholder frames generated for demonstration purposes. In a real application, these would be actual frames extracted from the video.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end">
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                {loading ? 'Refreshing...' : 'Refresh Frames'}
+              </button>
+            </div>
+          </div>
+        )}
         
         {renderFrames()}
       </div>

@@ -178,17 +178,38 @@ export async function POST(request: Request) {
         const frameNumber = i;
         const storagePath = `${video.project_id}/${videoId}/frame_${i}.jpg`;
         
-        // Create a placeholder image in storage
-        // This is a base64 encoded 1x1 transparent pixel
-        const placeholderImage = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+        // Create a more visually appealing placeholder image
+        // This is a base64 encoded SVG that looks like a video frame
+        // It includes the frame number and video title for context
+        const frameTitle = `Frame ${i+1} of ${numFrames}`;
+        const videoTitle = video.display_name || 'Video';
+        
+        // Create an SVG with text showing the frame number and video title
+        const svgContent = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+          <rect width="800" height="450" fill="#f0f0f0" />
+          <rect x="20" y="20" width="760" height="410" fill="#e0e0e0" stroke="#cccccc" stroke-width="2" />
+          
+          <!-- Video camera icon -->
+          <path d="M400 150 L350 180 L350 270 L450 270 L450 180 Z" fill="#a0a0a0" />
+          <path d="M450 200 L500 170 L500 250 L450 220 Z" fill="#a0a0a0" />
+          
+          <!-- Frame information -->
+          <text x="400" y="320" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#505050">${frameTitle}</text>
+          <text x="400" y="350" font-family="Arial, sans-serif" font-size="18" text-anchor="middle" fill="#707070">${videoTitle}</text>
+          <text x="400" y="380" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" fill="#909090">Generated placeholder</text>
+        </svg>`;
+        
+        // Convert SVG to base64
+        const svgBuffer = Buffer.from(svgContent);
         
         try {
-          // Upload the placeholder image to storage
+          // Upload the SVG placeholder image to storage
           const { error: uploadError } = await supabase
             .storage
             .from('frames')
-            .upload(storagePath, placeholderImage, {
-              contentType: 'image/gif',
+            .upload(storagePath, svgBuffer, {
+              contentType: 'image/svg+xml',
               upsert: true
             });
             
