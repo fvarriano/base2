@@ -818,13 +818,13 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <h3 className="text-sm font-medium text-blue-800">Placeholder Frames</h3>
+                  <h3 className="text-sm font-medium text-blue-800">Video Frames</h3>
                   <div className="mt-2 text-sm text-blue-700">
                     <p>
-                      These are placeholder frames generated for demonstration purposes. In a real application, these would be actual frames extracted from the video.
+                      These frames are automatically extracted from your video at regular intervals. You can add annotations to each frame by clicking on them.
                     </p>
                     <p className="mt-2">
-                      <strong>To implement real frame extraction:</strong> You would need to set up a video processing service using FFmpeg or a similar tool that can download videos from Loom, extract frames at regular intervals, and upload them to Supabase storage. This would typically be implemented as a serverless function or worker service.
+                      If frames are not loading correctly, try clicking the "Refresh Frames" button. For videos that appear stuck in processing, use the "Fix Stuck Processing" button.
                     </p>
                   </div>
                 </div>

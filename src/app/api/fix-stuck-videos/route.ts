@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { validate as isValidUUID } from 'uuid';
+import { processVideo } from '@/lib/videoProcessing';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -161,188 +162,25 @@ export async function POST(request: Request) {
       });
     }
     
-    // Otherwise, fix the video by generating frames
-    // Always generate new frames when fixing a stuck video
-    // This ensures we have frames even if previous attempts failed
-    const numFrames = Math.floor(Math.random() * 3) + 3; // 3-5 frames to reduce potential errors
+    // Process the video using our video processing service
+    console.log(`Starting real video processing for video ${videoId}`);
     
-    console.log(`Generating ${numFrames} frames for video ${videoId} during fix`);
+    const result = await processVideo(videoId);
     
-    // Create frame records in the database
-    let successfulFrames = 0;
-    
-    // TODO: REPLACE THIS WITH ACTUAL VIDEO PROCESSING
-    // To extract real frames from videos, you would need to:
-    // 1. Download the video from the source (e.g., Loom API)
-    // 2. Use a video processing library like FFmpeg to extract frames
-    // 3. Upload those frames to Supabase storage
-    // 4. Create frame records in the database with paths to the real frames
-    //
-    // Example implementation with FFmpeg (would need to be run in a serverless function or worker):
-    // 
-    // const videoUrl = video.source_url;
-    // const videoPath = `/tmp/${videoId}.mp4`;
-    // 
-    // // Download video
-    // await downloadFile(videoUrl, videoPath);
-    // 
-    // // Extract frames using FFmpeg (every 5 seconds for example)
-    // const framesDir = `/tmp/${videoId}/`;
-    // await executeCommand(`mkdir -p ${framesDir}`);
-    // await executeCommand(`ffmpeg -i ${videoPath} -vf fps=1/5 ${framesDir}frame-%03d.jpg`);
-    // 
-    // // Upload frames to storage and create records
-    // const frameFiles = await listFiles(framesDir);
-    // for (let i = 0; i < frameFiles.length; i++) {
-    //   const framePath = frameFiles[i];
-    //   const storagePath = `${video.project_id}/${videoId}/frame_${i}.jpg`;
-    //   
-    //   // Upload actual frame to storage
-    //   await supabase.storage.from('frames').upload(storagePath, fs.readFileSync(framePath));
-    //   
-    //   // Create frame record
-    //   await supabase.from('frames').insert({
-    //     video_id: videoId,
-    //     frame_number: i,
-    //     storage_path: storagePath,
-    //     created_at: new Date().toISOString()
-    //   });
-    // }
-    
-    // For now, we're using placeholder SVG images instead of real frames
-    for (let i = 0; i < numFrames; i++) {
-      try {
-        // In a real app, you would upload the frame to storage
-        // For this demo, we'll just create the database record
-        const frameNumber = i;
-        const storagePath = `${video.project_id}/${videoId}/frame_${i}.jpg`;
-        
-        // Create a more visually appealing placeholder image
-        // This is a base64 encoded SVG that looks like a video frame
-        // It includes the frame number and video title for context
-        const frameTitle = `Frame ${i+1} of ${numFrames}`;
-        const videoTitle = video.display_name || 'Video';
-        
-        // Create an SVG with text showing the frame number and video title
-        const svgContent = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
-          <rect width="800" height="450" fill="#f0f0f0" />
-          <rect x="20" y="20" width="760" height="410" fill="#e0e0e0" stroke="#cccccc" stroke-width="2" />
-          
-          <!-- Video camera icon -->
-          <path d="M400 150 L350 180 L350 270 L450 270 L450 180 Z" fill="#a0a0a0" />
-          <path d="M450 200 L500 170 L500 250 L450 220 Z" fill="#a0a0a0" />
-          
-          <!-- Frame information -->
-          <text x="400" y="320" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#505050">${frameTitle}</text>
-          <text x="400" y="350" font-family="Arial, sans-serif" font-size="18" text-anchor="middle" fill="#707070">${videoTitle}</text>
-          <text x="400" y="380" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" fill="#909090">Generated placeholder</text>
-        </svg>`;
-        
-        // Convert SVG to base64
-        const svgBuffer = Buffer.from(svgContent);
-        
-        try {
-          // Upload the SVG placeholder image to storage
-          const { error: uploadError, data: uploadData } = await supabase
-            .storage
-            .from('frames')
-            .upload(storagePath, svgBuffer, {
-              contentType: 'image/svg+xml',
-              upsert: true
-            });
-            
-          if (uploadError) {
-            console.error(`Error uploading placeholder for frame ${i}:`, uploadError);
-          } else {
-            console.log(`Successfully uploaded placeholder for frame ${i}`);
-            
-            // Make the file publicly accessible
-            const { error: publicError } = await supabase
-              .storage
-              .from('frames')
-              .update(storagePath, svgBuffer, {
-                contentType: 'image/svg+xml',
-                upsert: true,
-                cacheControl: '3600'
-              });
-              
-            if (publicError) {
-              console.error(`Error making frame ${i} public:`, publicError);
-            } else {
-              console.log(`Successfully made frame ${i} public`);
-            }
-          }
-        } catch (uploadError) {
-          console.error(`Error uploading placeholder for frame ${i}:`, uploadError);
-        }
-        
-        // Create frame record in database directly without storage
-        // This simplifies the process and reduces potential points of failure
-        const { error: insertError } = await supabase
-          .from('frames')
-          .insert({
-            video_id: videoId,
-            frame_number: frameNumber,
-            storage_path: storagePath,
-            created_at: new Date().toISOString()
-          });
-          
-        if (insertError) {
-          console.error(`Error inserting frame ${i}:`, insertError);
-          continue;
-        }
-        
-        successfulFrames++;
-        console.log(`Successfully created frame ${i} for video ${videoId}`);
-      } catch (error) {
-        console.error(`Error processing frame ${i}:`, error);
-      }
-    }
-    
-    console.log(`Successfully created ${successfulFrames} frame records out of ${numFrames} attempted`);
-    
-    if (successfulFrames === 0) {
-      // If no frames were created successfully, mark as error
-      await supabase
-        .from('videos')
-        .update({ 
-          status: 'error',
-          updated_at: new Date().toISOString(),
-          error_message: 'Failed to generate any frames'
-        })
-        .eq('id', videoId);
-        
+    if (!result.success) {
       return NextResponse.json({ 
-        message: 'Failed to generate any frames for the video',
+        message: 'Failed to process video',
         videoId,
+        error: result.error,
         status: 'error'
       }, { status: 500 });
     }
     
-    // Mark the video as completed
-    const now = new Date().toISOString();
-    const { error: updateError } = await supabase
-      .from('videos')
-      .update({ 
-        status: 'completed',
-        updated_at: now,
-        processing_completed_at: now
-      })
-      .eq('id', videoId);
-    
-    if (updateError) {
-      return NextResponse.json(
-        { error: `Failed to update video: ${updateError.message}` }, 
-        { status: 500 }
-      )
-    }
-    
     return NextResponse.json({ 
-      message: 'Video marked as completed with frames generated',
+      message: 'Video processed successfully with real frames',
       videoId,
-      framesGenerated: successfulFrames
-    })
+      framesGenerated: result.framesGenerated
+    });
     
   } catch (error: any) {
     console.error('API error:', error)
