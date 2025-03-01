@@ -114,11 +114,10 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    // Process frames immediately instead of in the background
-    // This is more reliable in serverless environments
+    // Process frames immediately
     try {
       // Generate frames synchronously
-      await generateFrames(videoId, projectId);
+      await generateDirectFrames(videoId, projectId);
       
       // Return success response
       return NextResponse.json({
@@ -158,9 +157,9 @@ export async function POST(request: Request) {
   }
 }
 
-// Function to generate frames
-async function generateFrames(videoId: string, projectId: string) {
-  console.log(`Generating frames for video ${videoId}`);
+// Function to generate frames directly without using storage
+async function generateDirectFrames(videoId: string, projectId: string) {
+  console.log(`Generating direct frames for video ${videoId}`);
   
   // Update status to processing
   const { error: updateError } = await supabase
@@ -183,51 +182,20 @@ async function generateFrames(videoId: string, projectId: string) {
   
   for (let i = 0; i < numFrames; i++) {
     try {
-      const storagePath = `${projectId}/${videoId}/frame_${i}.jpg`;
-      
-      // Create a placeholder image URL
+      // Create a placeholder image URL - using a public image service
+      // We're using placeholder.com which doesn't require any storage
       const placeholderUrl = `https://via.placeholder.com/800x450.jpg?text=Frame+${i+1}`;
       
-      console.log(`Downloading placeholder image from: ${placeholderUrl}`);
+      console.log(`Using placeholder image: ${placeholderUrl}`);
       
-      // Download the placeholder image
-      const response = await axios.get(placeholderUrl, {
-        responseType: 'arraybuffer'
-      });
-      
-      console.log(`Successfully downloaded placeholder image ${i+1}, size: ${response.data.length} bytes`);
-      
-      // Upload to Supabase storage
-      const { error: uploadError } = await supabase
-        .storage
-        .from('frames')
-        .upload(storagePath, response.data, {
-          contentType: 'image/jpeg',
-          upsert: true
-        });
-      
-      if (uploadError) {
-        console.error(`Error uploading frame ${i}:`, uploadError);
-        errors.push(`Frame ${i} upload: ${uploadError.message}`);
-        continue;
-      }
-      
-      // Get the public URL
-      const { data: publicUrlData } = supabase
-        .storage
-        .from('frames')
-        .getPublicUrl(storagePath);
-      
-      console.log(`Public URL for frame ${i}:`, publicUrlData.publicUrl);
-      
-      // Create frame record in database
+      // Create frame record in database with direct URL
       const { error: insertError } = await supabase
         .from('frames')
         .insert({
           video_id: videoId,
           frame_number: i,
-          storage_path: storagePath,
-          public_url: publicUrlData.publicUrl,
+          storage_path: `direct/${projectId}/${videoId}/frame_${i}.jpg`,
+          public_url: placeholderUrl, // Use the direct placeholder URL
           created_at: new Date().toISOString()
         });
       
