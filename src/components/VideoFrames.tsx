@@ -821,10 +821,10 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                   <h3 className="text-sm font-medium text-blue-800">Video Frames</h3>
                   <div className="mt-2 text-sm text-blue-700">
                     <p>
-                      These frames are automatically extracted from your video at regular intervals. You can add annotations to each frame by clicking on them.
+                      Currently using placeholder images from an image service. In production, these would be actual frames extracted from your video using FFmpeg.
                     </p>
                     <p className="mt-2">
-                      If frames are not loading correctly, try clicking the "Refresh Frames" button. For videos that appear stuck in processing, use the "Fix Stuck Processing" button.
+                      To implement real frame extraction, you'll need to set up a worker service with FFmpeg installed. See the VIDEO_PROCESSING_GUIDE.md file for implementation details.
                     </p>
                   </div>
                 </div>
