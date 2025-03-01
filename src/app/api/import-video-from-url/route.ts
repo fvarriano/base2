@@ -110,16 +110,16 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    // Use the fix-stuck-videos endpoint to generate frames
-    // This is a more reliable approach than trying to process the video directly
-    const apiUrl = process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL 
-      ? `${process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL}/process-video`
-      : '/api/fix-stuck-videos'; // Fallback to local endpoint
+    // Always use the local fix-stuck-videos endpoint directly
+    // This is more reliable than trying to use an external processor
+    const apiUrl = '/api/fix-stuck-videos';
     
     console.log('Using API URL:', apiUrl);
     
     try {
-      const processResponse = await fetch(apiUrl, {
+      // Use the global fetch instead of the imported node-fetch
+      // This ensures we're using the correct fetch for the environment
+      const processResponse = await global.fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
