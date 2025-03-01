@@ -7,11 +7,10 @@ import { v4 as uuidv4 } from 'uuid'
 // Import the axios library for making HTTP requests
 import axios from 'axios'
 
-// Initialize Supabase client with service role key for admin access
-// This is necessary for storage operations
+// Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '' // Use service role key for admin privileges
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '' // Use anon key instead of service role key
 )
 
 export async function POST(request: Request) {
@@ -180,27 +179,7 @@ async function processVideoInBackground(videoId: string, projectId: string) {
         
         console.log(`Successfully downloaded placeholder image ${i+1}, size: ${response.data.length} bytes`);
         
-        // Check if the frames bucket exists
-        const { data: buckets } = await supabase
-          .storage
-          .listBuckets();
-        
-        const framesBucketExists = buckets?.some(bucket => bucket.name === 'frames');
-        
-        if (!framesBucketExists) {
-          console.log('Frames bucket does not exist, creating it');
-          const { error: createBucketError } = await supabase
-            .storage
-            .createBucket('frames', {
-              public: true
-            });
-          
-          if (createBucketError) {
-            console.error('Error creating frames bucket:', createBucketError);
-            throw createBucketError;
-          }
-        }
-        
+        // Assume the frames bucket already exists
         // Upload to Supabase storage
         const { error: uploadError } = await supabase
           .storage
