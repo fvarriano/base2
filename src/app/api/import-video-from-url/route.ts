@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import fetch from 'node-fetch'
+// Remove the node-fetch import as we won't need it
+// import fetch from 'node-fetch'
+
+// Import the POST handler from fix-stuck-videos directly
+import { POST as fixStuckVideosHandler } from '../fix-stuck-videos/route'
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -110,18 +114,10 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    // Use an absolute URL to ensure the endpoint is called correctly from the server
-    // We need to construct the full URL based on the deployment environment
-    const host = process.env.VERCEL_URL || 'appaudits.vercel.app';
-    const protocol = host.includes('localhost') ? 'http' : 'https';
-    const apiUrl = `${protocol}://${host}/api/fix-stuck-videos`;
-    
-    console.log('Using API URL:', apiUrl);
-    
     try {
-      // Use the global fetch instead of the imported node-fetch
-      // This ensures we're using the correct fetch for the environment
-      const processResponse = await global.fetch(apiUrl, {
+      // Instead of making an HTTP request, directly call the fix-stuck-videos handler
+      // Create a new Request object to pass to the handler
+      const fixRequest = new Request('http://localhost/api/fix-stuck-videos', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,13 +128,22 @@ export async function POST(request: Request) {
         })
       });
       
+      // Call the handler directly
+      const processResponse = await fixStuckVideosHandler(fixRequest);
       console.log('Process response status:', processResponse.status);
       
-      if (!processResponse.ok) {
+      if (processResponse.status !== 200) {
         console.error('Process video error status:', processResponse.status);
         
         try {
-          const processError = await processResponse.json() as { error?: string };
+          const processErrorText = await processResponse.text();
+          let processError;
+          try {
+            processError = JSON.parse(processErrorText);
+          } catch (e) {
+            processError = { error: processErrorText };
+          }
+          
           console.error('Process video error details:', processError);
           
           // If processing fails, update the video status to error
@@ -177,7 +182,8 @@ export async function POST(request: Request) {
       
       // Try to parse the successful response
       try {
-        const processResult = await processResponse.json();
+        const processResultText = await processResponse.text();
+        const processResult = JSON.parse(processResultText);
         console.log('Process result:', processResult);
       } catch (parseError) {
         console.error('Error parsing successful response (non-critical):', parseError);
