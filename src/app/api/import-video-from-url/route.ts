@@ -21,6 +21,7 @@ export async function POST(request: Request) {
     }
     
     console.log('Original URL:', videoUrl);
+    console.log('Project ID:', projectId);
     
     // Extract the Loom video ID directly from the URL using regex
     // This is more permissive to handle various Loom URL formats
@@ -94,6 +95,7 @@ export async function POST(request: Request) {
         storage_path: storagePath,
         source_url: videoUrl, // Store the original URL
         status: 'pending',
+        processing_started_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       });
@@ -108,72 +110,112 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    // Use the fix-stuck-videos endpoint which we know works for generating frames
-    // Use a direct URL to avoid any issues with environment variables
-    const apiUrl = 'https://appaudits.vercel.app/api/fix-stuck-videos';
+    // Use the fix-stuck-videos endpoint to generate frames
+    // This is a more reliable approach than trying to process the video directly
+    const apiUrl = process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL 
+      ? `${process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL}/process-video`
+      : '/api/fix-stuck-videos'; // Fallback to local endpoint
     
     console.log('Using API URL:', apiUrl);
     
-    const processResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        videoId,
-        action: 'fix'
-      }),
-    });
-    
-    if (!processResponse.ok) {
-      console.error('Process video error status:', processResponse.status);
+    try {
+      const processResponse = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoId,
+          action: 'fix'
+        })
+      });
       
-      try {
-        const processError = await processResponse.json() as { error?: string };
-        console.error('Process video error details:', processError);
+      console.log('Process response status:', processResponse.status);
+      
+      if (!processResponse.ok) {
+        console.error('Process video error status:', processResponse.status);
         
-        // If processing fails, update the video status to error
-        await supabase
-          .from('videos')
-          .update({
-            status: 'error',
-            error_message: processError.error || 'Failed to start processing',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
+        try {
+          const processError = await processResponse.json() as { error?: string };
+          console.error('Process video error details:', processError);
           
-        return NextResponse.json(
-          { error: `Failed to process video: ${processError.error || 'Unknown error'}` }, 
-          { status: 500 }
-        )
-      } catch (parseError) {
-        console.error('Error parsing process response:', parseError);
-        
-        // If we can't parse the response, update with generic error
-        await supabase
-          .from('videos')
-          .update({
-            status: 'error',
-            error_message: `Failed to start processing (Status ${processResponse.status})`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
+          // If processing fails, update the video status to error
+          await supabase
+            .from('videos')
+            .update({
+              status: 'error',
+              error_message: processError.error || 'Failed to start processing',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+            
+          return NextResponse.json(
+            { error: `Failed to process video: ${processError.error || 'Unknown error'}` }, 
+            { status: 500 }
+          )
+        } catch (parseError) {
+          console.error('Error parsing process response:', parseError);
           
-        return NextResponse.json(
-          { error: `Failed to process video: Status ${processResponse.status}` }, 
-          { status: 500 }
-        )
+          // If we can't parse the response, update with generic error
+          await supabase
+            .from('videos')
+            .update({
+              status: 'error',
+              error_message: `Failed to start processing (Status ${processResponse.status})`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+            
+          return NextResponse.json(
+            { error: `Failed to process video: Status ${processResponse.status}` }, 
+            { status: 500 }
+          )
+        }
       }
+      
+      // Try to parse the successful response
+      try {
+        const processResult = await processResponse.json();
+        console.log('Process result:', processResult);
+      } catch (parseError) {
+        console.error('Error parsing successful response (non-critical):', parseError);
+      }
+      
+      console.log('Video processing started successfully');
+      
+      // Update the video status to processing
+      await supabase
+        .from('videos')
+        .update({
+          status: 'processing',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+      
+      return NextResponse.json({
+        message: 'Video import started',
+        videoId,
+        displayName,
+        status: 'processing'
+      });
+    } catch (fetchError) {
+      console.error('Fetch error during processing:', fetchError);
+      
+      // Update the video status to error
+      await supabase
+        .from('videos')
+        .update({
+          status: 'error',
+          error_message: 'Network error while processing video',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+      
+      return NextResponse.json(
+        { error: 'Network error while processing video' }, 
+        { status: 500 }
+      );
     }
-    
-    console.log('Video processing started successfully');
-    
-    return NextResponse.json({
-      message: 'Video import started',
-      videoId,
-      displayName,
-      status: 'processing'
-    });
     
   } catch (error: any) {
     console.error('API error:', error);

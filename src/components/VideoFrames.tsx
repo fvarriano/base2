@@ -57,6 +57,8 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
   const [processingStartTime, setProcessingStartTime] = useState<Date | null>(null)
   const [processingDuration, setProcessingDuration] = useState<string>('')
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
+  // Add state to track image loading errors
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
 
   // Load annotations for all frames
   const loadAnnotations = useCallback(async (frames: Frame[]) => {
@@ -381,6 +383,150 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
     }
   }, [videoId, loadAnnotations, videoStatus, processingStartTime]);
 
+  // Render the frames section
+  const renderFrames = () => {
+    if (frames.length === 0) {
+      if (videoStatus === 'error') {
+        return (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
+            <div className="text-red-600 font-medium mb-2">Error processing video</div>
+            <p className="text-sm text-red-500">
+              There was an error processing this video. Please try uploading it again.
+            </p>
+          </div>
+        );
+      }
+      
+      return (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+          <p className="text-gray-500">No frames available yet.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {frames.map((frame) => {
+          const frameAnnotations = annotations[frame.id] || [];
+          const hasError = imageErrors[frame.id] || false;
+          
+          return (
+            <div 
+              key={frame.id} 
+              className={`relative border rounded-lg overflow-hidden ${selectedFrame?.id === frame.id ? 'ring-2 ring-blue-500' : ''}`}
+              onClick={(e) => handleFrameClick(frame.id, e)}
+            >
+              <div className="relative aspect-video bg-gray-100">
+                {!hasError ? (
+                  <Image
+                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/frames/${frame.storage_path}`}
+                    alt={`Frame ${frame.frame_number}`}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="object-contain"
+                    onError={() => {
+                      console.log(`Error loading image for frame ${frame.id}`);
+                      setImageErrors(prev => ({ ...prev, [frame.id]: true }));
+                    }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+                    <div className="text-center p-4">
+                      <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        className="h-10 w-10 mx-auto text-gray-400" 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={1.5} 
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" 
+                        />
+                      </svg>
+                      <p className="mt-2 text-sm text-gray-500">Image failed to load</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Annotations */}
+                {frameAnnotations.map((annotation) => (
+                  <div
+                    key={annotation.id}
+                    className="absolute w-6 h-6 -ml-3 -mt-3 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold cursor-pointer z-10"
+                    style={{
+                      left: `${annotation.x}%`,
+                      top: `${annotation.y}%`,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Handle annotation click if needed
+                    }}
+                  >
+                    {annotation.number}
+                  </div>
+                ))}
+              </div>
+              
+              <div className="p-3 bg-white">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    Frame {frame.frame_number + 1}
+                  </h3>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm('Are you sure you want to delete this frame?')) {
+                        handleDeleteFrame(frame);
+                      }
+                    }}
+                    className="text-red-500 hover:text-red-700 text-xs"
+                  >
+                    Delete
+                  </button>
+                </div>
+                
+                {/* Annotation list */}
+                {frameAnnotations.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {frameAnnotations.map((annotation) => (
+                      <div key={annotation.id} className="flex items-start space-x-2 text-sm">
+                        <div className="flex-shrink-0 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                          {annotation.number}
+                        </div>
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={annotation.text || ''}
+                            onChange={(e) => handleAnnotationTextUpdate(frame.id, annotation.id, e.target.value)}
+                            className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                            placeholder="Add annotation text..."
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteAnnotation(frame.id, annotation.id);
+                          }}
+                          className="text-red-500 hover:text-red-700 text-xs"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   if (loading) return <div>Loading frames...</div>;
   if (error) return <div>Error: {error}</div>;
 
@@ -529,185 +675,48 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
         </div>
       )}
 
-      {/* Show frames section if we have frames or if processing is complete */}
-      {(frames.length > 0 || videoStatus === 'completed') && (
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex justify-between items-center mb-4">
-            {isEditingTitle ? (
-              <div className="flex items-center">
-                <input
-                  type="text"
-                  value={frameGroupTitle}
-                  onChange={(e) => setFrameGroupTitle(e.target.value)}
-                  className="border-gray-300 rounded-md shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
-                  autoFocus
-                  onBlur={() => {
-                    setIsEditingTitle(false);
-                    handleTitleUpdate(frameGroupTitle);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      setIsEditingTitle(false);
-                      handleTitleUpdate(frameGroupTitle);
-                    }
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    setIsEditingTitle(false);
-                    handleTitleUpdate(frameGroupTitle);
-                  }}
-                  className="ml-2 p-1 text-gray-400 hover:text-gray-600"
-                >
-                  Save
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center">
-                <h2 className="text-lg font-semibold text-gray-900">{frameGroupTitle}</h2>
-                <button
-                  onClick={() => setIsEditingTitle(true)}
-                  className="ml-2 p-1 text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Show message if completed but no frames */}
-          {frames.length === 0 && videoStatus === 'completed' && (
-            <div className="text-center py-8 text-gray-500">
-              No frames were extracted from this video.
+      {/* Frames section */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <div className="flex justify-between items-center mb-4">
+          {isEditingTitle ? (
+            <input
+              type="text"
+              value={frameGroupTitle}
+              onChange={(e) => setFrameGroupTitle(e.target.value)}
+              onBlur={() => handleTitleUpdate(frameGroupTitle)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleTitleUpdate(frameGroupTitle);
+                }
+              }}
+              className="text-lg font-semibold text-gray-900 border-b border-gray-300 focus:outline-none focus:border-blue-500"
+              autoFocus
+            />
+          ) : (
+            <h2 
+              className="text-lg font-semibold text-gray-900 cursor-pointer hover:text-blue-600"
+              onClick={() => setIsEditingTitle(true)}
+            >
+              {frameGroupTitle}
+              <span className="ml-2 text-xs text-gray-400">(click to edit)</span>
+            </h2>
+          )}
+          
+          {videoStatus === 'error' && (
+            <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-medium">
+              error
             </div>
           )}
-
-          <div className="relative">
-            {/* Remove the gradient divs */}
-            
-            {/* Scrollable container */}
-            <div className="overflow-x-auto pb-4 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-              <div className="flex gap-6" style={{ width: 'max-content' }}>
-                {frames.map((frame) => (
-                  <div key={frame.id} className="flex-none space-y-4">
-                    {/* Frame Container */}
-                    <div className="relative w-[640px] group">
-                      <div 
-                        className="relative aspect-video rounded-lg overflow-hidden bg-gray-100 shadow-lg cursor-crosshair"
-                        onClick={(e) => handleFrameClick(frame.id, e)}
-                      >
-                        <Image
-                          src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/frames/${frame.storage_path}`}
-                          alt={`Frame ${frame.frame_number + 1}`}
-                          width={640}
-                          height={360}
-                          className="object-contain w-full h-full"
-                          crossOrigin="anonymous"
-                          priority
-                          unoptimized={true}
-                          onError={(e) => {
-                            console.error('Error loading image:', frame.storage_path);
-                            const imgElement = e.target as HTMLImageElement;
-                            // Create a fallback placeholder with frame number
-                            imgElement.src = `https://via.placeholder.com/640x360/f3f4f6/9ca3af?text=Frame+${frame.frame_number + 1}`;
-                            imgElement.style.objectFit = 'cover';
-                          }}
-                        />
-                        {/* Delete Button - Visible on hover */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation(); // Prevent frame click
-                            handleDeleteFrame(frame);
-                          }}
-                          className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                        {/* Annotation Markers */}
-                        {annotations[frame.id]?.map((annotation) => (
-                          <div
-                            key={annotation.id}
-                            className="absolute w-6 h-6 -ml-3 -mt-3 flex items-center justify-center"
-                            style={{ left: `${annotation.x}%`, top: `${annotation.y}%` }}
-                          >
-                            <div className="w-6 h-6 bg-blue-500 rounded-full text-white text-sm flex items-center justify-center">
-                              {annotation.number}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Frame Title and Annotations */}
-                    <div className="w-[640px] space-y-4">
-                      <div className="text-sm font-medium text-gray-900 px-1">
-                        Frame {frame.frame_number + 1}
-                      </div>
-
-                      {/* Annotations List */}
-                      {annotations[frame.id]?.length > 0 && (
-                        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                          <h3 className="font-medium text-gray-900">Annotations</h3>
-                          <div className="space-y-2">
-                            {annotations[frame.id].map((annotation) => (
-                              <div key={annotation.id} className="flex items-start gap-3">
-                                <div className="flex-none w-6 h-6 bg-blue-500 rounded-full text-white text-sm flex items-center justify-center">
-                                  {annotation.number}
-                                </div>
-                                <div className="flex-1">
-                                  <textarea
-                                    value={annotation.text || ''}
-                                    onChange={(e) => handleAnnotationTextUpdate(frame.id, annotation.id, e.target.value)}
-                                    placeholder="Add annotation note..."
-                                    className="w-full min-h-[60px] px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  />
-                                </div>
-                                <button
-                                  onClick={() => handleDeleteAnnotation(frame.id, annotation.id)}
-                                  className="flex-none p-1 text-gray-400 hover:text-red-500"
-                                >
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          
+          {videoStatus === 'completed' && frames.length > 0 && (
+            <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-medium">
+              {frames.length} frames
             </div>
-          </div>
+          )}
         </div>
-      )}
-
-      {/* Show error message if processing failed */}
-      {videoStatus === 'error' && (
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-start mb-4">
-            <div className="flex-shrink-0">
-              <svg className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">
-                Error processing video
-              </h3>
-              <div className="mt-2 text-sm text-red-700">
-                <p>There was an error processing this video. Please try uploading it again.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        
+        {renderFrames()}
+      </div>
     </div>
   );
 } 
