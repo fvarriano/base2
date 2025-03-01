@@ -117,7 +117,7 @@ export async function POST(request: Request) {
     // Process frames immediately
     try {
       // Generate frames synchronously
-      await generateDirectFrames(videoId, projectId);
+      await generateFramesWithPlaceholders(videoId, projectId, loomVideoId);
       
       // Return success response
       return NextResponse.json({
@@ -157,9 +157,9 @@ export async function POST(request: Request) {
   }
 }
 
-// Function to generate frames directly without using storage
-async function generateDirectFrames(videoId: string, projectId: string) {
-  console.log(`Generating direct frames for video ${videoId}`);
+// Function to generate frames with reliable placeholder images
+async function generateFramesWithPlaceholders(videoId: string, projectId: string, loomVideoId: string) {
+  console.log(`Generating frames for video ${videoId}`);
   
   // Update status to processing
   const { error: updateError } = await supabase
@@ -182,9 +182,9 @@ async function generateDirectFrames(videoId: string, projectId: string) {
   
   for (let i = 0; i < numFrames; i++) {
     try {
-      // Create a placeholder image URL - using a public image service
-      // We're using placeholder.com which doesn't require any storage
-      const placeholderUrl = `https://via.placeholder.com/800x450.jpg?text=Frame+${i+1}`;
+      // Use a more reliable placeholder service - picsum.photos
+      // This service provides random images that are more visually interesting
+      const placeholderUrl = `https://picsum.photos/seed/${loomVideoId}_${i}/800/450`;
       
       console.log(`Using placeholder image: ${placeholderUrl}`);
       
@@ -195,8 +195,7 @@ async function generateDirectFrames(videoId: string, projectId: string) {
           video_id: videoId,
           frame_number: i,
           storage_path: `direct/${projectId}/${videoId}/frame_${i}.jpg`,
-          public_url: placeholderUrl, // Use the direct placeholder URL
-          created_at: new Date().toISOString()
+          public_url: placeholderUrl // Store the direct URL to the placeholder image
         });
       
       if (insertError) {

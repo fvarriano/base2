@@ -13,6 +13,7 @@ interface Frame {
   frame_number: number
   storage_path: string
   created_at: string | null
+  public_url?: string
 }
 
 interface Annotation {
@@ -466,7 +467,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
               <div className="relative aspect-video bg-gray-100">
                 {!hasError ? (
                   <Image
-                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/frames/${frame.storage_path}`}
+                    src={frame.public_url || `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/frames/${frame.storage_path}`}
                     alt={`Frame ${frame.frame_number}`}
                     fill
                     sizes="(max-width: 768px) 100vw, 50vw"
