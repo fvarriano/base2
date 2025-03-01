@@ -108,26 +108,20 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    // Use our own process-video endpoint directly
-    // Get the base URL for our own API
-    const baseUrl = process.env.NEXT_PUBLIC_VERCEL_URL 
-      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` 
-      : process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}` 
-        : 'https://appaudits.vercel.app';
+    // Use the fix-stuck-videos endpoint which we know works for generating frames
+    // Use a direct URL to avoid any issues with environment variables
+    const apiUrl = 'https://appaudits.vercel.app/api/fix-stuck-videos';
     
-    console.log('Using API URL:', baseUrl);
+    console.log('Using API URL:', apiUrl);
     
-    const processResponse = await fetch(`${baseUrl}/api/process-video`, {
+    const processResponse = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         videoId,
-        projectId,
-        loomVideoId,
-        videoUrl
+        action: 'fix'
       }),
     });
     
