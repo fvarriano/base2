@@ -3,9 +3,10 @@ import { useRouter } from 'next/navigation';
 
 interface VideoUrlImportProps {
   projectId: string;
+  onVideoImported?: (videoId: string) => void;
 }
 
-export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
+export function VideoUrlImport({ projectId, onVideoImported }: VideoUrlImportProps) {
   const [videoUrl, setVideoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +105,12 @@ export function VideoUrlImport({ projectId }: VideoUrlImportProps) {
       // Show success message
       setSuccess('Video import started successfully! Processing in the background...');
       
-      // Redirect to the project page to see the processing video
+      // Call the callback if provided
+      if (onVideoImported && data.videoId) {
+        onVideoImported(data.videoId);
+      }
+      
+      // Refresh the page data
       router.refresh();
       
       // Clear the input

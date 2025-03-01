@@ -141,8 +141,21 @@ export default function ProjectPage() {
           }} 
         />
 
-        {/* Add VideoUrlImport component */}
-        <VideoUrlImport projectId={project.id} />
+        {/* Add VideoUrlImport component with callback */}
+        <VideoUrlImport 
+          projectId={project.id} 
+          onVideoImported={(videoId) => {
+            // Refresh videos list when a new video is imported
+            supabase
+              .from('videos')
+              .select('id, display_name, status, created_at')
+              .eq('project_id', project.id)
+              .order('created_at', { ascending: false })
+              .then(({ data }) => {
+                if (data) setVideos(data as Video[])
+              })
+          }}
+        />
 
         {/* Display all videos */}
         {videos.map((video) => (
