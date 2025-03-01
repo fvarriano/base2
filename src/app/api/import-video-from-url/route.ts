@@ -110,9 +110,11 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    // Always use the local fix-stuck-videos endpoint directly
-    // This is more reliable than trying to use an external processor
-    const apiUrl = '/api/fix-stuck-videos';
+    // Use an absolute URL to ensure the endpoint is called correctly from the server
+    // We need to construct the full URL based on the deployment environment
+    const host = process.env.VERCEL_URL || 'appaudits.vercel.app';
+    const protocol = host.includes('localhost') ? 'http' : 'https';
+    const apiUrl = `${protocol}://${host}/api/fix-stuck-videos`;
     
     console.log('Using API URL:', apiUrl);
     
