@@ -823,6 +823,9 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                     <p>
                       These are placeholder frames generated for demonstration purposes. In a real application, these would be actual frames extracted from the video.
                     </p>
+                    <p className="mt-2">
+                      <strong>To implement real frame extraction:</strong> You would need to set up a video processing service using FFmpeg or a similar tool that can download videos from Loom, extract frames at regular intervals, and upload them to Supabase storage. This would typically be implemented as a serverless function or worker service.
+                    </p>
                   </div>
                 </div>
               </div>

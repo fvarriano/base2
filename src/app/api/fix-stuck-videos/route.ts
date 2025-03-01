@@ -171,6 +171,45 @@ export async function POST(request: Request) {
     // Create frame records in the database
     let successfulFrames = 0;
     
+    // TODO: REPLACE THIS WITH ACTUAL VIDEO PROCESSING
+    // To extract real frames from videos, you would need to:
+    // 1. Download the video from the source (e.g., Loom API)
+    // 2. Use a video processing library like FFmpeg to extract frames
+    // 3. Upload those frames to Supabase storage
+    // 4. Create frame records in the database with paths to the real frames
+    //
+    // Example implementation with FFmpeg (would need to be run in a serverless function or worker):
+    // 
+    // const videoUrl = video.source_url;
+    // const videoPath = `/tmp/${videoId}.mp4`;
+    // 
+    // // Download video
+    // await downloadFile(videoUrl, videoPath);
+    // 
+    // // Extract frames using FFmpeg (every 5 seconds for example)
+    // const framesDir = `/tmp/${videoId}/`;
+    // await executeCommand(`mkdir -p ${framesDir}`);
+    // await executeCommand(`ffmpeg -i ${videoPath} -vf fps=1/5 ${framesDir}frame-%03d.jpg`);
+    // 
+    // // Upload frames to storage and create records
+    // const frameFiles = await listFiles(framesDir);
+    // for (let i = 0; i < frameFiles.length; i++) {
+    //   const framePath = frameFiles[i];
+    //   const storagePath = `${video.project_id}/${videoId}/frame_${i}.jpg`;
+    //   
+    //   // Upload actual frame to storage
+    //   await supabase.storage.from('frames').upload(storagePath, fs.readFileSync(framePath));
+    //   
+    //   // Create frame record
+    //   await supabase.from('frames').insert({
+    //     video_id: videoId,
+    //     frame_number: i,
+    //     storage_path: storagePath,
+    //     created_at: new Date().toISOString()
+    //   });
+    // }
+    
+    // For now, we're using placeholder SVG images instead of real frames
     for (let i = 0; i < numFrames; i++) {
       try {
         // In a real app, you would upload the frame to storage
