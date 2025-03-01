@@ -115,8 +115,17 @@ export async function POST(request: Request) {
     console.log('Video record created, starting processing');
     
     try {
+      // Construct the base URL for API calls
+      const baseUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : process.env.NEXT_PUBLIC_VERCEL_URL
+          ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+          : 'http://localhost:3000';
+      
+      console.log('Using base URL for API calls:', baseUrl);
+      
       // Call the process-video API endpoint
-      const processResponse = await axios.post(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/process-video`, {
+      const processResponse = await axios.post(`${baseUrl}/api/process-video`, {
         videoId
       });
       

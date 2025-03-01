@@ -82,12 +82,17 @@ export async function POST(request: Request) {
         
         // Create a placeholder image URL (in a real implementation, this would be a real frame)
         // We're using a placeholder image service to generate a random image
-        const placeholderUrl = `https://picsum.photos/800/450?random=${videoId}-${i}`;
+        // Use a more reliable placeholder service
+        const placeholderUrl = `https://via.placeholder.com/800x450.jpg?text=Frame+${i+1}`;
+        
+        console.log(`Downloading placeholder image from: ${placeholderUrl}`);
         
         // Download the placeholder image
         const response = await axios.get(placeholderUrl, {
           responseType: 'arraybuffer'
         });
+        
+        console.log(`Successfully downloaded placeholder image ${i+1}, size: ${response.data.length} bytes`);
         
         // Upload to Supabase storage
         const { error: uploadError } = await supabase
