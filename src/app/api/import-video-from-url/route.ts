@@ -7,10 +7,11 @@ import { v4 as uuidv4 } from 'uuid'
 // Import the axios library for making HTTP requests
 import axios from 'axios'
 
-// Initialize Supabase client
+// Initialize Supabase client with service role key for admin access
+// This is necessary for storage operations
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  process.env.SUPABASE_SERVICE_ROLE_KEY || '' // Use service role key for admin privileges
 )
 
 export async function POST(request: Request) {
@@ -114,126 +115,22 @@ export async function POST(request: Request) {
     
     console.log('Video record created, starting processing');
     
-    try {
-      // Instead of calling the API, process the video directly
-      // This avoids cross-origin and authentication issues between serverless functions
-      
-      // Update status to processing
-      await supabase
-        .from('videos')
-        .update({
-          status: 'processing',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      
-      // Generate 5 placeholder frames
-      const numFrames = 5;
-      let successfulFrames = 0;
-      
-      for (let i = 0; i < numFrames; i++) {
-        try {
-          const storagePath = `${projectId}/${videoId}/frame_${i}.jpg`;
-          
-          // Create a placeholder image URL
-          const placeholderUrl = `https://via.placeholder.com/800x450.jpg?text=Frame+${i+1}`;
-          
-          console.log(`Downloading placeholder image from: ${placeholderUrl}`);
-          
-          // Download the placeholder image
-          const response = await axios.get(placeholderUrl, {
-            responseType: 'arraybuffer'
-          });
-          
-          console.log(`Successfully downloaded placeholder image ${i+1}, size: ${response.data.length} bytes`);
-          
-          // Upload to Supabase storage
-          const { error: uploadError } = await supabase
-            .storage
-            .from('frames')
-            .upload(storagePath, response.data, {
-              contentType: 'image/jpeg',
-              upsert: true
-            });
-          
-          if (uploadError) {
-            console.error(`Error uploading frame ${i}:`, uploadError);
-            continue;
-          }
-          
-          // Make the file publicly accessible
-          const { error: publicError } = await supabase
-            .storage
-            .from('frames')
-            .update(storagePath, response.data, {
-              contentType: 'image/jpeg',
-              upsert: true,
-              cacheControl: '3600'
-            });
-          
-          if (publicError) {
-            console.error(`Error making frame ${i} public:`, publicError);
-          }
-          
-          // Create frame record in database
-          const { error: insertError } = await supabase
-            .from('frames')
-            .insert({
-              video_id: videoId,
-              frame_number: i,
-              storage_path: storagePath,
-              created_at: new Date().toISOString()
-            });
-          
-          if (insertError) {
-            console.error(`Error inserting frame ${i}:`, insertError);
-            continue;
-          }
-          
-          successfulFrames++;
-          console.log(`Successfully processed frame ${i+1}/${numFrames}`);
-        } catch (error) {
-          console.error(`Error processing frame ${i}:`, error);
-        }
-      }
-      
-      // Update video status
-      const now = new Date().toISOString();
-      await supabase
-        .from('videos')
-        .update({
-          status: successfulFrames > 0 ? 'completed' : 'error',
-          updated_at: now,
-          processing_completed_at: now,
-          error_message: successfulFrames > 0 ? null : 'Failed to generate any frames'
-        })
-        .eq('id', videoId);
-      
-      return NextResponse.json({
-        message: 'Video processed successfully',
-        videoId,
-        displayName,
-        status: 'completed',
-        framesGenerated: successfulFrames
-      });
-    } catch (processError: any) {
-      console.error('Error during processing:', processError);
-      
-      // Update the video status to error
-      await supabase
-        .from('videos')
-        .update({
-          status: 'error',
-          error_message: processError.message || 'Failed to process video',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      
-      return NextResponse.json(
-        { error: `Failed to process video: ${processError.message || 'Unknown error'}` }, 
-        { status: 500 }
-      );
-    }
+    // Return success immediately to the client
+    // This allows the client to continue while processing happens in the background
+    const response = NextResponse.json({
+      message: 'Video import started successfully! Processing in the background...',
+      videoId,
+      displayName,
+      status: 'processing'
+    });
+    
+    // Process the video in the background
+    // This won't block the response
+    processVideoInBackground(videoId, projectId).catch(error => {
+      console.error('Background processing error:', error);
+    });
+    
+    return response;
     
   } catch (error: any) {
     console.error('API error:', error);
@@ -241,5 +138,145 @@ export async function POST(request: Request) {
       { error: error.message || 'Unknown error' }, 
       { status: 500 }
     )
+  }
+}
+
+// Separate function to process the video in the background
+async function processVideoInBackground(videoId: string, projectId: string) {
+  try {
+    console.log(`Starting background processing for video ${videoId}`);
+    
+    // Update status to processing
+    const { error: updateError } = await supabase
+      .from('videos')
+      .update({
+        status: 'processing',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', videoId);
+    
+    if (updateError) {
+      console.error('Error updating video status:', updateError);
+      throw updateError;
+    }
+    
+    // Generate 5 placeholder frames
+    const numFrames = 5;
+    let successfulFrames = 0;
+    
+    for (let i = 0; i < numFrames; i++) {
+      try {
+        const storagePath = `${projectId}/${videoId}/frame_${i}.jpg`;
+        
+        // Create a placeholder image URL
+        const placeholderUrl = `https://via.placeholder.com/800x450.jpg?text=Frame+${i+1}`;
+        
+        console.log(`Downloading placeholder image from: ${placeholderUrl}`);
+        
+        // Download the placeholder image
+        const response = await axios.get(placeholderUrl, {
+          responseType: 'arraybuffer'
+        });
+        
+        console.log(`Successfully downloaded placeholder image ${i+1}, size: ${response.data.length} bytes`);
+        
+        // Check if the frames bucket exists
+        const { data: buckets } = await supabase
+          .storage
+          .listBuckets();
+        
+        const framesBucketExists = buckets?.some(bucket => bucket.name === 'frames');
+        
+        if (!framesBucketExists) {
+          console.log('Frames bucket does not exist, creating it');
+          const { error: createBucketError } = await supabase
+            .storage
+            .createBucket('frames', {
+              public: true
+            });
+          
+          if (createBucketError) {
+            console.error('Error creating frames bucket:', createBucketError);
+            throw createBucketError;
+          }
+        }
+        
+        // Upload to Supabase storage
+        const { error: uploadError } = await supabase
+          .storage
+          .from('frames')
+          .upload(storagePath, response.data, {
+            contentType: 'image/jpeg',
+            upsert: true
+          });
+        
+        if (uploadError) {
+          console.error(`Error uploading frame ${i}:`, uploadError);
+          continue;
+        }
+        
+        // Make the file publicly accessible
+        const { data: publicUrlData } = supabase
+          .storage
+          .from('frames')
+          .getPublicUrl(storagePath);
+        
+        console.log(`Public URL for frame ${i}:`, publicUrlData.publicUrl);
+        
+        // Create frame record in database
+        const { error: insertError } = await supabase
+          .from('frames')
+          .insert({
+            video_id: videoId,
+            frame_number: i,
+            storage_path: storagePath,
+            created_at: new Date().toISOString()
+          });
+        
+        if (insertError) {
+          console.error(`Error inserting frame ${i}:`, insertError);
+          continue;
+        }
+        
+        successfulFrames++;
+        console.log(`Successfully processed frame ${i+1}/${numFrames}`);
+      } catch (error) {
+        console.error(`Error processing frame ${i}:`, error);
+      }
+    }
+    
+    // Update video status
+    const now = new Date().toISOString();
+    const { error: finalUpdateError } = await supabase
+      .from('videos')
+      .update({
+        status: successfulFrames > 0 ? 'completed' : 'error',
+        updated_at: now,
+        processing_completed_at: now,
+        error_message: successfulFrames > 0 ? null : 'Failed to generate any frames'
+      })
+      .eq('id', videoId);
+    
+    if (finalUpdateError) {
+      console.error('Error updating final video status:', finalUpdateError);
+      throw finalUpdateError;
+    }
+    
+    console.log(`Video processing completed for ${videoId} with ${successfulFrames} frames`);
+    
+  } catch (error) {
+    console.error('Error in background processing:', error);
+    
+    // Update video status to error
+    await supabase
+      .from('videos')
+      .update({
+        status: 'error',
+        error_message: error instanceof Error ? error.message : 'Unknown error during processing',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', videoId);
+    
+    throw error;
   }
 } 
