@@ -38,6 +38,9 @@ interface Video {
   display_name: string
   status: VideoStatus
   created_at: string
+  source_url?: string
+  storage_path?: string
+  project_id?: string
 }
 
 interface VideoUpdate {
@@ -467,7 +470,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
               <div className="relative aspect-video bg-gray-100">
                 {!hasError ? (
                   <Image
-                    src={frame.public_url || `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/frames/${frame.storage_path}`}
+                    src={frame.public_url || `https://storage.googleapis.com/appaudits-frames/${frame.storage_path}`}
                     alt={`Frame ${frame.frame_number}`}
                     fill
                     sizes="(max-width: 768px) 100vw, 50vw"
@@ -822,10 +825,7 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                   <h3 className="text-sm font-medium text-blue-800">Video Frames</h3>
                   <div className="mt-2 text-sm text-blue-700">
                     <p>
-                      Currently using placeholder images from an image service. In production, these would be actual frames extracted from your video using FFmpeg.
-                    </p>
-                    <p className="mt-2">
-                      To implement real frame extraction, you'll need to set up a worker service with FFmpeg installed. See the VIDEO_PROCESSING_GUIDE.md file for implementation details.
+                      These frames were extracted from your video using FFmpeg. Each frame represents a key moment in your video.
                     </p>
                   </div>
                 </div>

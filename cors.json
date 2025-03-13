@@ -1,0 +1,1 @@
+[{"origin": ["https://appaudits.vercel.app", "http://localhost:3000"],"method": ["GET", "HEAD", "PUT", "POST"],"responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],"maxAgeSeconds": 3600}]

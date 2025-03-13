@@ -20,6 +20,9 @@ interface Video {
   display_name: string
   status: string
   created_at: string
+  source_url?: string
+  storage_path?: string
+  project_id?: string
 }
 
 export default function ProjectPage() {

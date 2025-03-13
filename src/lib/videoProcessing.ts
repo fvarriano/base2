@@ -9,7 +9,7 @@ const supabase = createClient(
 );
 
 /**
- * Processes a video to extract frames using an external worker service
+ * Processes a video to extract frames using the video processor service
  */
 export async function processVideo(videoId: string): Promise<{
   success: boolean;
@@ -41,94 +41,34 @@ export async function processVideo(videoId: string): Promise<{
       })
       .eq('id', videoId);
     
-    // For now, we'll create placeholder frames since we don't have a real worker service
-    // In a production environment, you would call your worker service here
-    // Example: const response = await axios.post('https://your-worker-service.com/process-video', { videoId, videoUrl: video.source_url });
-    
-    // Generate 5 placeholder frames
-    const numFrames = 5;
-    let successfulFrames = 0;
-    
-    for (let i = 0; i < numFrames; i++) {
-      try {
-        const storagePath = `${video.project_id}/${videoId}/frame_${i}.jpg`;
-        
-        // Create a placeholder image URL (in a real implementation, this would be a real frame)
-        // We're using a placeholder image service to generate a random image
-        const placeholderUrl = `https://picsum.photos/800/450?random=${videoId}-${i}`;
-        
-        // Download the placeholder image
-        const response = await axios.get(placeholderUrl, {
-          responseType: 'arraybuffer'
-        });
-        
-        // Upload to Supabase storage
-        const { error: uploadError } = await supabase
-          .storage
-          .from('frames')
-          .upload(storagePath, response.data, {
-            contentType: 'image/jpeg',
-            upsert: true
-          });
-        
-        if (uploadError) {
-          console.error(`Error uploading frame ${i}:`, uploadError);
-          continue;
-        }
-        
-        // Make the file publicly accessible
-        const { error: publicError } = await supabase
-          .storage
-          .from('frames')
-          .update(storagePath, response.data, {
-            contentType: 'image/jpeg',
-            upsert: true,
-            cacheControl: '3600'
-          });
-        
-        if (publicError) {
-          console.error(`Error making frame ${i} public:`, publicError);
-        }
-        
-        // Create frame record in database
-        const { error: insertError } = await supabase
-          .from('frames')
-          .insert({
-            video_id: videoId,
-            frame_number: i,
-            storage_path: storagePath,
-            created_at: new Date().toISOString()
-          });
-        
-        if (insertError) {
-          console.error(`Error inserting frame ${i}:`, insertError);
-          continue;
-        }
-        
-        successfulFrames++;
-        console.log(`Successfully processed frame ${i+1}/${numFrames}`);
-      } catch (error) {
-        console.error(`Error processing frame ${i}:`, error);
-      }
+    // Call the video processor service
+    const processorUrl = process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL;
+    if (!processorUrl) {
+      throw new Error('Video processor URL not configured');
     }
     
-    console.log(`Successfully processed ${successfulFrames} frames out of ${numFrames}`);
+    console.log(`Calling video processor service at ${processorUrl}`);
     
-    // Update video status
-    const now = new Date().toISOString();
-    await supabase
-      .from('videos')
-      .update({
-        status: successfulFrames > 0 ? 'completed' : 'error',
-        updated_at: now,
-        processing_completed_at: now,
-        error_message: successfulFrames > 0 ? null : 'Failed to generate any frames'
-      })
-      .eq('id', videoId);
+    const response = await axios.post(`${processorUrl}/process`, {
+      videoUrl: video.source_url,
+      videoId: video.id,
+      projectId: video.project_id
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.VIDEO_PROCESSOR_API_KEY || ''
+      }
+    });
+    
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'Unknown error from video processor');
+    }
+    
+    console.log(`Video processor response:`, response.data);
     
     return {
       success: true,
-      framesGenerated: successfulFrames
+      framesGenerated: response.data.frameCount
     };
   } catch (error: any) {
     console.error('Error processing video:', error);

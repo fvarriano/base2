@@ -163,27 +163,43 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
       setStatus('Starting server-side processing...')
       setDetailedStatus('Sending video for processing on the server')
       
+      // Get the video URL from Supabase storage
+      const { data: publicUrl } = supabase
+        .storage
+        .from('videos')
+        .getPublicUrl(uploadData.path)
+
+      // Update the video record with the source URL
+      await supabase
+        .from('videos')
+        .update({
+          source_url: publicUrl.publicUrl
+        })
+        .eq('id', videoData.id)
+
+      // Call the process-video endpoint
       const response = await fetch('/api/process-video', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          videoId: videoData.id,
-          projectId
-        }),
+          videoId: videoData.id
+        })
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to start processing')
+        const error = await response.json()
+        throw new Error(error.message || 'Failed to start video processing')
       }
 
-      setStatus('Processing video...')
-      setDetailedStatus('Your video is being processed on the server. You can close this tab and check back later.')
-      
-      // Start polling for status updates
-      startPollingStatus(videoData.id)
+      setDetailedStatus('Video processing started successfully')
+      setUploading(false)
+
+      // Call the onVideoProcessed callback if provided
+      if (onVideoProcessed) {
+        onVideoProcessed(videoData.id)
+      }
       
     } catch (error) {
       console.error('Error:', error)

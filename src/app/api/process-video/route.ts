@@ -5,7 +5,7 @@ import axios from 'axios'
 // Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 )
 
 // Maximum processing time in minutes before considering a video as stuck
@@ -15,27 +15,31 @@ const MAX_PROCESSING_TIME_MINUTES = 30;
 // In production, you would use a queue system like AWS SQS or a background worker
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { videoId } = body
-    
+    const { videoId } = await request.json();
+
     if (!videoId) {
-      return NextResponse.json({ error: 'Video ID is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
     }
-    
-    console.log(`Processing video: ${videoId}`);
-    
+
     // Get video details from database
     const { data: video, error: videoError } = await supabase
       .from('videos')
       .select('*')
       .eq('id', videoId)
-      .single()
-    
+      .single();
+
     if (videoError || !video) {
-      console.error('Error fetching video:', videoError);
+      return NextResponse.json(
+        { error: `Video not found: ${videoError?.message || 'Unknown error'}` },
+        { status: 404 }
+      );
+    }
+
+    if (!video.project_id) {
+      console.error('Video has no project ID:', videoId);
       return NextResponse.json({ 
-        error: videoError ? videoError.message : 'Video not found' 
-      }, { status: 404 })
+        error: 'Video has no associated project ID' 
+      }, { status: 400 })
     }
     
     // Check if video is already processing and has been for too long
@@ -68,101 +72,61 @@ export async function POST(request: Request) {
       .from('videos')
       .update({
         status: 'processing',
+        processing_started_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .eq('id', videoId);
-    
-    // Generate 5 placeholder frames
-    const numFrames = 5;
-    let successfulFrames = 0;
-    
-    for (let i = 0; i < numFrames; i++) {
-      try {
-        const storagePath = `${video.project_id}/${videoId}/frame_${i}.jpg`;
-        
-        // Create a placeholder image URL (in a real implementation, this would be a real frame)
-        // We're using a placeholder image service to generate a random image
-        // Use a more reliable placeholder service
-        const placeholderUrl = `https://via.placeholder.com/800x450.jpg?text=Frame+${i+1}`;
-        
-        console.log(`Downloading placeholder image from: ${placeholderUrl}`);
-        
-        // Download the placeholder image
-        const response = await axios.get(placeholderUrl, {
-          responseType: 'arraybuffer'
-        });
-        
-        console.log(`Successfully downloaded placeholder image ${i+1}, size: ${response.data.length} bytes`);
-        
-        // Upload to Supabase storage
-        const { error: uploadError } = await supabase
-          .storage
-          .from('frames')
-          .upload(storagePath, response.data, {
-            contentType: 'image/jpeg',
-            upsert: true
-          });
-        
-        if (uploadError) {
-          console.error(`Error uploading frame ${i}:`, uploadError);
-          continue;
-        }
-        
-        // Make the file publicly accessible
-        const { error: publicError } = await supabase
-          .storage
-          .from('frames')
-          .update(storagePath, response.data, {
-            contentType: 'image/jpeg',
-            upsert: true,
-            cacheControl: '3600'
-          });
-        
-        if (publicError) {
-          console.error(`Error making frame ${i} public:`, publicError);
-        }
-        
-        // Create frame record in database
-        const { error: insertError } = await supabase
-          .from('frames')
-          .insert({
-            video_id: videoId,
-            frame_number: i,
-            storage_path: storagePath,
-            created_at: new Date().toISOString()
-          });
-        
-        if (insertError) {
-          console.error(`Error inserting frame ${i}:`, insertError);
-          continue;
-        }
-        
-        successfulFrames++;
-        console.log(`Successfully processed frame ${i+1}/${numFrames}`);
-      } catch (error) {
-        console.error(`Error processing frame ${i}:`, error);
-      }
+
+    // Call the video processor service
+    const processorUrl = process.env.NEXT_PUBLIC_VIDEO_PROCESSOR_URL;
+    if (!processorUrl) {
+      throw new Error('Video processor URL not configured');
     }
-    
-    // Update video status
-    const now = new Date().toISOString();
-    await supabase
-      .from('videos')
-      .update({
-        status: successfulFrames > 0 ? 'completed' : 'error',
-        updated_at: now,
-        processing_completed_at: now,
-        error_message: successfulFrames > 0 ? null : 'Failed to generate any frames'
-      })
-      .eq('id', videoId);
-    
+
+    console.log(`Calling video processor service at ${processorUrl}`);
+
+    const response = await axios.post(`${processorUrl}/process`, {
+      videoUrl: video.source_url,
+      videoId: video.id,
+      projectId: video.project_id
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.VIDEO_PROCESSOR_API_KEY || ''
+      }
+    });
+
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'Unknown error from video processor');
+    }
+
+    console.log(`Video processor response:`, response.data);
+
     return NextResponse.json({
       success: true,
-      message: 'Video processed successfully',
-      framesGenerated: successfulFrames
+      message: 'Video processing started successfully',
+      framesGenerated: response.data.frameCount
     });
   } catch (error: any) {
     console.error('Error processing video:', error);
+
+    // Update video status to error if we have a videoId
+    try {
+      const { videoId } = await request.json();
+      if (videoId) {
+        await supabase
+          .from('videos')
+          .update({
+            status: 'error',
+            updated_at: new Date().toISOString(),
+            error_message: error.message || 'Unknown error during processing'
+          })
+          .eq('id', videoId);
+      }
+    } catch (updateError) {
+      console.error('Error updating video status:', updateError);
+    }
+
     return NextResponse.json({ 
       success: false, 
       error: error.message || 'Unknown error' 
