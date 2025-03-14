@@ -225,7 +225,7 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
 
   return (
     <div>
-      <div className="mt-4">
+      <div>
         <input
           type="file"
           accept="video/mp4"
@@ -238,18 +238,15 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
             file:bg-blue-50 file:text-blue-700
             hover:file:bg-blue-100"
         />
-        <div className="mt-2 space-y-2">
-          <p className="text-xs text-gray-500">
-            Server-side processing enabled:
-          </p>
-          <ul className="text-xs text-gray-500 list-disc list-inside">
+        <div className="mt-2">
+          <ul className="text-xs text-gray-500 list-disc list-inside space-y-1">
             <li>Videos of any size can be processed</li>
             <li>You can close this tab after upload completes</li>
             <li>Processing continues in the background</li>
           </ul>
         </div>
         {status && (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4">
             <div className="flex items-center">
               {uploading && (
                 <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -260,7 +257,7 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
               <p className="text-sm font-medium text-gray-900">{status}</p>
             </div>
             {detailedStatus && (
-              <p className="text-sm text-gray-500">{detailedStatus}</p>
+              <p className="text-sm text-gray-500 mt-1">{detailedStatus}</p>
             )}
             {progress && (
               <div className="relative pt-1">
@@ -276,9 +273,9 @@ export function VideoUpload({ projectId, onVideoProcessed }: VideoUploadProps) {
               </div>
             )}
             {uploading && (
-              <div className="mt-2 p-4 bg-blue-50 rounded-md">
-                <p className="text-sm text-blue-700">
-                  ✅ Server-side processing: You can close this tab after upload completes. Processing will continue in the background.
+              <div className="mt-2 p-2 bg-blue-50 rounded-md">
+                <p className="text-xs text-blue-700">
+                  ✅ Server-side processing enabled
                 </p>
               </div>
             )}
