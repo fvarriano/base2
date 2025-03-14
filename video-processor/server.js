@@ -95,6 +95,7 @@ app.post('/process', validateApiKey, async (req, res) => {
   }
   
   console.log(`Processing video: ${videoId} from ${videoUrl}`);
+  console.log('Project ID:', projectId);
   
   // Create temp directory
   const tempDir = `/tmp/${videoId}`;
@@ -110,69 +111,111 @@ app.post('/process', validateApiKey, async (req, res) => {
       fs.mkdirSync(framesDir, { recursive: true });
     }
     
-    // Update video status
-    await supabase
+    // Update video status to processing
+    console.log(`Updating video ${videoId} status to 'processing'`);
+    const { error: updateError } = await supabase
       .from('videos')
       .update({ status: 'processing' })
       .eq('id', videoId);
+      
+    if (updateError) {
+      console.error('Error updating video status to processing:', updateError);
+      throw updateError;
+    }
     
+    console.log('Successfully updated video status to processing');
     console.log(`Downloading video from ${videoUrl}`);
     
-    // Download video
-    await downloadVideo(videoUrl, videoPath);
+    try {
+      await downloadVideo(videoUrl, videoPath);
+      console.log('Video downloaded successfully');
+    } catch (downloadError) {
+      console.error('Error downloading video:', downloadError);
+      throw new Error(`Failed to download video: ${downloadError.message}`);
+    }
     
     console.log('Video downloaded, extracting frames');
+    let frameCount;
+    try {
+      frameCount = await extractFrames(videoPath, framesDir);
+      console.log(`Successfully extracted ${frameCount} frames`);
+    } catch (extractError) {
+      console.error('Error extracting frames:', extractError);
+      throw new Error(`Failed to extract frames: ${extractError.message}`);
+    }
     
-    // Extract frames
-    const frameCount = await extractFrames(videoPath, framesDir);
-    
-    console.log(`Extracted ${frameCount} frames, uploading to storage`);
-    
-    // Upload frames to Google Cloud Storage and create records
-    const frames = fs.readdirSync(framesDir)
+    // Get list of frame files
+    console.log('Reading frame files from directory');
+    const frameFiles = fs.readdirSync(framesDir)
       .filter(file => file.endsWith('.jpg'))
-      .map(file => path.join(framesDir, file));
+      .map(file => path.join(framesDir, file))
+      .sort((a, b) => {
+        // Sort by frame number
+        const aNum = parseInt(a.match(/\d+/)[0]);
+        const bNum = parseInt(b.match(/\d+/)[0]);
+        return aNum - bNum;
+      });
     
-    const results = await uploadFrames(frames, videoId, projectId);
+    console.log(`Found ${frameFiles.length} frame files`);
     
-    console.log(`Uploaded ${results.length} frames to storage`);
-    
-    // Update video status
-    await supabase
-      .from('videos')
-      .update({ 
-        status: 'completed',
-        processing_completed_at: new Date().toISOString()
-      })
-      .eq('id', videoId);
-    
-    // Clean up
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    
-    res.json({
-      success: true,
-      videoId,
-      frameCount: results.length,
-      frames: results
-    });
+    try {
+      const results = await uploadFrames(frameFiles, videoId, projectId);
+      console.log(`Successfully uploaded ${results.length} frames`);
+      
+      // Update video status to completed
+      const { error: completeError } = await supabase
+        .from('videos')
+        .update({ 
+          status: 'completed',
+          processing_completed_at: new Date().toISOString(),
+          frame_count: results.length
+        })
+        .eq('id', videoId);
+        
+      if (completeError) {
+        console.error('Error updating video status to completed:', completeError);
+        throw completeError;
+      }
+      
+      // Clean up
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      
+      res.json({
+        success: true,
+        videoId,
+        frameCount: results.length,
+        frames: results
+      });
+    } catch (uploadError) {
+      console.error('Error uploading frames:', uploadError);
+      throw new Error(`Failed to upload frames: ${uploadError.message}`);
+    }
   } catch (error) {
     console.error('Processing error:', error);
     
-    // Update video status
-    await supabase
+    // Update video status to error with detailed message
+    console.log(`Updating video ${videoId} status to 'error'`);
+    const { error: errorUpdate } = await supabase
       .from('videos')
       .update({ 
         status: 'error',
         error_message: error.message
       })
       .eq('id', videoId);
+      
+    if (errorUpdate) {
+      console.error('Error updating video status to error:', errorUpdate);
+    }
     
     // Clean up if directory exists
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
     
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: error.message,
+      details: error.stack
+    });
   }
 });
 
@@ -326,28 +369,63 @@ async function downloadVideo(url, outputPath) {
 }
 
 // Extract frames function
-function extractFrames(videoPath, outputDir, frameRate = 0.2) {
+function extractFrames(videoPath, outputDir) {
   return new Promise((resolve, reject) => {
-    // Extract 1 frame every 5 seconds (0.2 fps)
+    console.log('Starting frame extraction...');
+    console.log('Video path:', videoPath);
+    console.log('Output directory:', outputDir);
+
+    // Simple frame extraction - 1 frame every 2 seconds
     const ffmpeg = spawn('ffmpeg', [
       '-i', videoPath,
-      '-vf', `fps=${frameRate}`,
-      '-q:v', '1',
+      '-vf', 'fps=0.5',  // One frame every 2 seconds
+      '-frame_pts', '1',
+      '-q:v', '2',
       `${outputDir}/frame_%03d.jpg`
     ]);
     
     let error = '';
+    
     ffmpeg.stderr.on('data', (data) => {
-      error += data.toString();
+      const output = data.toString();
+      console.log('FFmpeg output:', output);  // Log all FFmpeg output
+      error += output;
+    });
+
+    ffmpeg.stdout.on('data', (data) => {
+      console.log('FFmpeg stdout:', data.toString());
+    });
+    
+    ffmpeg.on('error', (err) => {
+      console.error('FFmpeg process error:', err);
+      reject(err);
     });
     
     ffmpeg.on('close', (code) => {
+      console.log(`FFmpeg process exited with code ${code}`);
+      
       if (code !== 0) {
+        console.error('FFmpeg error output:', error);
         return reject(new Error(`FFmpeg process exited with code ${code}: ${error}`));
       }
       
-      const frames = fs.readdirSync(outputDir).filter(file => file.endsWith('.jpg'));
-      resolve(frames.length);
+      try {
+        // Get list of generated frames
+        const frames = fs.readdirSync(outputDir)
+          .filter(file => file.endsWith('.jpg'))
+          .sort((a, b) => {
+            // Sort by frame number
+            const aNum = parseInt(a.match(/\d+/)[0]);
+            const bNum = parseInt(b.match(/\d+/)[0]);
+            return aNum - bNum;
+          });
+        
+        console.log(`Successfully extracted ${frames.length} frames`);
+        resolve(frames.length);
+      } catch (err) {
+        console.error('Error reading output directory:', err);
+        reject(err);
+      }
     });
   });
 }
@@ -359,60 +437,93 @@ async function uploadFrames(frames, videoId, projectId) {
   for (let i = 0; i < frames.length; i++) {
     const framePath = frames[i];
     const frameNumber = i + 1;
-    const filename = path.basename(framePath);
-    const storagePath = `${projectId}/${videoId}/${filename}`;
+    const paddedNumber = String(frameNumber).padStart(3, '0');
+    const storagePath = `${projectId}/${videoId}/frame_${paddedNumber}.jpg`;
     
     console.log(`Uploading frame ${frameNumber}/${frames.length}: ${storagePath}`);
     
-    // Upload to Google Cloud Storage
-    await bucket.upload(framePath, {
-      destination: storagePath,
-      metadata: {
-        contentType: 'image/jpeg',
-      },
-    });
-    
-    // Get public URL
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
-    
-    // Try to create frame record in Supabase with public_url
     try {
-      const { error: insertError } = await supabase
-        .from('frames')
-        .insert({
-          video_id: videoId,
-          frame_number: frameNumber,
-          storage_path: storagePath,
-          public_url: publicUrl
-        });
+      // Upload to Google Cloud Storage with retries
+      let retries = 3;
+      let uploadSuccess = false;
       
-      if (insertError) {
-        // If error mentions public_url column, try without it
-        if (insertError.message && insertError.message.includes('public_url')) {
-          console.log('Retrying without public_url column');
-          const { error: retryError } = await supabase
-            .from('frames')
-            .insert({
-              video_id: videoId,
-              frame_number: frameNumber,
-              storage_path: storagePath
-            });
+      while (retries > 0 && !uploadSuccess) {
+        try {
+          // First, upload the file
+          await bucket.upload(framePath, {
+            destination: storagePath,
+            metadata: {
+              contentType: 'image/jpeg',
+              cacheControl: 'public, max-age=31536000', // Cache for 1 year
+            },
+            predefinedAcl: 'publicRead'
+          });
           
-          if (retryError) throw retryError;
-        } else {
-          throw insertError;
+          // Get file reference
+          const file = bucket.file(storagePath);
+          
+          // Update the file's metadata with CORS headers
+          await file.setMetadata({
+            contentType: 'image/jpeg',
+            cacheControl: 'public, max-age=31536000',
+            metadata: {
+              'Access-Control-Allow-Origin': '*',
+              'Cross-Origin-Resource-Policy': 'cross-origin'
+            }
+          });
+          
+          // Make the file public and verify its accessibility
+          await file.makePublic();
+          
+          // Get the public URL
+          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+          
+          // Verify accessibility with proper headers
+          const response = await axios.head(publicUrl, {
+            headers: {
+              'Origin': 'https://appaudits.vercel.app',
+              'Access-Control-Request-Method': 'GET'
+            }
+          });
+          
+          if (response.status === 200) {
+            console.log(`Frame ${frameNumber} uploaded and verified accessible at ${publicUrl}`);
+            console.log('Response headers:', response.headers);
+            uploadSuccess = true;
+            
+            // Create frame record in Supabase
+            const { data: frameData, error: insertError } = await supabase
+              .from('frames')
+              .insert({
+                video_id: videoId,
+                frame_number: frameNumber,
+                storage_path: storagePath
+              })
+              .select()
+              .single();
+            
+            if (insertError) throw insertError;
+            
+            results.push({
+              frameNumber,
+              storagePath,
+              publicUrl,
+              frameId: frameData.id
+            });
+          } else {
+            throw new Error(`Frame verification failed with status ${response.status}`);
+          }
+        } catch (error) {
+          console.error(`Error uploading frame ${frameNumber} (attempt ${4-retries}/3):`, error);
+          retries--;
+          if (retries === 0) throw error;
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
         }
       }
     } catch (error) {
-      console.error(`Error inserting frame ${frameNumber}:`, error);
+      console.error(`Failed to upload frame ${frameNumber} after all retries:`, error);
       throw error;
     }
-    
-    results.push({
-      frameNumber,
-      storagePath,
-      publicUrl
-    });
   }
   
   return results;
@@ -445,6 +556,26 @@ app.get('/test-supabase', async (req, res) => {
   } catch (error) {
     console.error('Unexpected error testing Supabase connection:', error);
     return res.status(500).json({ error: 'Unexpected error', details: error.message });
+  }
+});
+
+// Test endpoint to verify Supabase connection
+app.post('/test-supabase', validateApiKey, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('videos')
+      .select('id')
+      .limit(1);
+      
+    if (error) {
+      console.error('Supabase test error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+    
+    res.json({ success: true, message: 'Supabase connection successful', data });
+  } catch (error) {
+    console.error('Supabase test error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

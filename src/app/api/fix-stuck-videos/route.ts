@@ -167,7 +167,8 @@ export async function POST(request: Request) {
     
     try {
       // Call the process-video API endpoint
-      const response = await axios.post(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/process-video`, {
+      const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+      const response = await axios.post(`${baseUrl}/api/process-video`, {
         videoId
       });
       

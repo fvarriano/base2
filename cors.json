@@ -1,1 +1,1 @@
-[{"origin": ["https://appaudits.vercel.app", "http://localhost:3000"],"method": ["GET", "HEAD", "PUT", "POST"],"responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],"maxAgeSeconds": 3600}]
+[{"origin": ["*"],"method": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],"responseHeader": ["Content-Type", "Access-Control-Allow-Origin", "Cross-Origin-Resource-Policy", "Cross-Origin-Embedder-Policy", "Cache-Control", "*"],"maxAgeSeconds": 3600}]

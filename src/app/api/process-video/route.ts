@@ -14,8 +14,11 @@ const MAX_PROCESSING_TIME_MINUTES = 30;
 // This is a simplified version for demonstration
 // In production, you would use a queue system like AWS SQS or a background worker
 export async function POST(request: Request) {
+  let videoId: string | undefined;
+  
   try {
-    const { videoId } = await request.json();
+    const body = await request.json();
+    videoId = body.videoId;
 
     if (!videoId) {
       return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
@@ -85,7 +88,8 @@ export async function POST(request: Request) {
 
     console.log(`Calling video processor service at ${processorUrl}`);
 
-    const response = await axios.post(`${processorUrl}/process`, {
+    // Make the request to the video processor service without awaiting the response
+    axios.post(`${processorUrl}/process`, {
       videoUrl: video.source_url,
       videoId: video.id,
       projectId: video.project_id
@@ -94,26 +98,31 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json',
         'x-api-key': process.env.VIDEO_PROCESSOR_API_KEY || ''
       }
+    }).catch(error => {
+      console.error('Error from video processor:', error);
+      // Update video status to error asynchronously
+      supabase
+        .from('videos')
+        .update({
+          status: 'error',
+          updated_at: new Date().toISOString(),
+          error_message: error.message || 'Error from video processor'
+        })
+        .eq('id', videoId);
     });
 
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Unknown error from video processor');
-    }
-
-    console.log(`Video processor response:`, response.data);
-
+    // Return success immediately, client will poll for status
     return NextResponse.json({
       success: true,
       message: 'Video processing started successfully',
-      framesGenerated: response.data.frameCount
+      videoId
     });
   } catch (error: any) {
     console.error('Error processing video:', error);
 
     // Update video status to error if we have a videoId
-    try {
-      const { videoId } = await request.json();
-      if (videoId) {
+    if (videoId) {
+      try {
         await supabase
           .from('videos')
           .update({
@@ -122,9 +131,9 @@ export async function POST(request: Request) {
             error_message: error.message || 'Unknown error during processing'
           })
           .eq('id', videoId);
+      } catch (updateError) {
+        console.error('Error updating video status:', updateError);
       }
-    } catch (updateError) {
-      console.error('Error updating video status:', updateError);
     }
 
     return NextResponse.json({ 

@@ -71,6 +71,7 @@ export interface Database {
           status: string
           display_name: string
           created_at: string
+          source_url?: string
         }
         Insert: {
           id?: string
@@ -80,6 +81,7 @@ export interface Database {
           status?: string
           display_name?: string
           created_at?: string
+          source_url?: string
         }
         Update: {
           created_at?: string | null
@@ -88,6 +90,7 @@ export interface Database {
           project_id?: string | null
           status?: string | null
           storage_path?: string
+          source_url?: string | null
         }
         Relationships: [
           {

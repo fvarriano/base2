@@ -62,8 +62,18 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
   const [processingStartTime, setProcessingStartTime] = useState<Date | null>(null)
   const [processingDuration, setProcessingDuration] = useState<string>('')
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
-  // Add state to track image loading errors
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
+
+  // Helper function to get frame URL
+  const getFrameUrl = useCallback((storagePath: string) => {
+    return `https://storage.googleapis.com/appaudits-frames/${storagePath}`
+  }, [])
+
+  // Add error handler for image loading
+  const handleImageError = useCallback((frameId: string, error: any) => {
+    console.error(`Error loading frame ${frameId}:`, error)
+    setImageErrors(prev => ({ ...prev, [frameId]: true }))
+  }, [])
 
   // Load annotations for all frames
   const loadAnnotations = useCallback(async (frames: Frame[]) => {
@@ -469,15 +479,18 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
             >
               <div className="relative aspect-video bg-gray-100">
                 {!hasError ? (
-                  <Image
-                    src={frame.public_url || `https://storage.googleapis.com/appaudits-frames/${frame.storage_path}`}
+                  <img
+                    src={getFrameUrl(frame.storage_path)}
                     alt={`Frame ${frame.frame_number}`}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 50vw"
-                    className="object-contain"
-                    onError={() => {
-                      console.log(`Error loading image for frame ${frame.id}`);
-                      setImageErrors(prev => ({ ...prev, [frame.id]: true }));
+                    className="absolute inset-0 w-full h-full object-contain"
+                    crossOrigin="anonymous"
+                    onError={(e) => {
+                      console.error(`Error loading frame ${frame.frame_number}:`, {
+                        frameId: frame.id,
+                        storagePath: frame.storage_path,
+                        fullUrl: getFrameUrl(frame.storage_path)
+                      });
+                      handleImageError(frame.id, e);
                     }}
                   />
                 ) : (
@@ -498,6 +511,15 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                         />
                       </svg>
                       <p className="mt-2 text-sm text-gray-500">Image failed to load</p>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setImageErrors(prev => ({ ...prev, [frame.id]: false }));
+                        }}
+                        className="mt-2 text-xs text-blue-500 hover:text-blue-700"
+                      >
+                        Retry
+                      </button>
                     </div>
                   </div>
                 )}
@@ -773,42 +795,40 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
 
       {/* Frames section */}
       <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex justify-between items-center mb-4">
-          {isEditingTitle ? (
-            <input
-              type="text"
-              value={frameGroupTitle}
-              onChange={(e) => setFrameGroupTitle(e.target.value)}
-              onBlur={() => handleTitleUpdate(frameGroupTitle)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleTitleUpdate(frameGroupTitle);
-                }
-              }}
-              className="text-lg font-semibold text-gray-900 border-b border-gray-300 focus:outline-none focus:border-blue-500"
-              autoFocus
-            />
-          ) : (
-            <h2 
-              className="text-lg font-semibold text-gray-900 cursor-pointer hover:text-blue-600"
-              onClick={() => setIsEditingTitle(true)}
-            >
-              {frameGroupTitle}
-              <span className="ml-2 text-xs text-gray-400">(click to edit)</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <h2 className="text-lg font-semibold">
+              {isEditingTitle ? (
+                <input
+                  type="text"
+                  value={frameGroupTitle}
+                  onChange={(e) => setFrameGroupTitle(e.target.value)}
+                  onBlur={() => {
+                    setIsEditingTitle(false)
+                    handleTitleUpdate(frameGroupTitle)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setIsEditingTitle(false)
+                      handleTitleUpdate(frameGroupTitle)
+                    }
+                  }}
+                  className="border rounded px-2 py-1"
+                  autoFocus
+                />
+              ) : (
+                <span onClick={() => setIsEditingTitle(true)}>{frameGroupTitle}</span>
+              )}
             </h2>
-          )}
-          
-          {videoStatus === 'error' && (
-            <div className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-medium">
-              error
-            </div>
-          )}
-          
-          {videoStatus === 'completed' && frames.length > 0 && (
-            <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-medium">
-              {frames.length} frames
-            </div>
-          )}
+            <span className="text-sm text-gray-500">({frames.length} frames)</span>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Refresh Frames</span>
+          </button>
         </div>
         
         {/* Add this after the title section in the return statement, before the frames grid */}
@@ -830,17 +850,6 @@ export function VideoFrames({ videoId }: VideoFramesProps) {
                   </div>
                 </div>
               </div>
-            </div>
-            
-            <div className="flex justify-end">
-              <button
-                onClick={handleRefresh}
-                disabled={loading}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                {loading ? 'Refreshing...' : 'Refresh Frames'}
-              </button>
             </div>
           </div>
         )}

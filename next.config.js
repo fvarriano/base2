@@ -9,7 +9,14 @@ const nextConfig = {
         port: '',
         pathname: '/storage/v1/object/public/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+        pathname: '/appaudits-frames/**',
+      },
     ],
+    domains: ['storage.googleapis.com'],
+    unoptimized: true, // Disable image optimization for external URLs
   },
   async headers() {
     return [
@@ -36,13 +43,17 @@ const nextConfig = {
         headers: [
           {
             key: 'Cross-Origin-Embedder-Policy',
-            value: 'require-corp'
+            value: 'credentialless'
           },
           {
             key: 'Cross-Origin-Opener-Policy',
             value: 'same-origin'
+          },
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'cross-origin'
           }
-        ]
+        ],
       },
       {
         source: '/ffmpeg-core.js',
