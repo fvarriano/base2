@@ -111,11 +111,14 @@ app.post('/process', validateApiKey, async (req, res) => {
       fs.mkdirSync(framesDir, { recursive: true });
     }
     
-    // Update video status to processing
+    // Update video status to processing with start time
     console.log(`Updating video ${videoId} status to 'processing'`);
     const { error: updateError } = await supabase
       .from('videos')
-      .update({ status: 'processing' })
+      .update({ 
+        status: 'processing',
+        processing_started_at: new Date().toISOString()
+      })
       .eq('id', videoId);
       
     if (updateError) {
@@ -150,7 +153,6 @@ app.post('/process', validateApiKey, async (req, res) => {
       .filter(file => file.endsWith('.jpg'))
       .map(file => path.join(framesDir, file))
       .sort((a, b) => {
-        // Sort by frame number
         const aNum = parseInt(a.match(/\d+/)[0]);
         const bNum = parseInt(b.match(/\d+/)[0]);
         return aNum - bNum;
@@ -162,7 +164,7 @@ app.post('/process', validateApiKey, async (req, res) => {
       const results = await uploadFrames(frameFiles, videoId, projectId);
       console.log(`Successfully uploaded ${results.length} frames`);
       
-      // Update video status to completed
+      // Update video status to completed with completion time
       const { error: completeError } = await supabase
         .from('videos')
         .update({ 
@@ -193,13 +195,14 @@ app.post('/process', validateApiKey, async (req, res) => {
   } catch (error) {
     console.error('Processing error:', error);
     
-    // Update video status to error with detailed message
+    // Update video status to error with detailed message and completion time
     console.log(`Updating video ${videoId} status to 'error'`);
     const { error: errorUpdate } = await supabase
       .from('videos')
       .update({ 
         status: 'error',
-        error_message: error.message
+        error_message: error.message,
+        processing_completed_at: new Date().toISOString()
       })
       .eq('id', videoId);
       
@@ -375,57 +378,108 @@ function extractFrames(videoPath, outputDir) {
     console.log('Video path:', videoPath);
     console.log('Output directory:', outputDir);
 
-    // Simple frame extraction - 1 frame every 2 seconds
-    const ffmpeg = spawn('ffmpeg', [
-      '-i', videoPath,
-      '-vf', 'fps=0.5',  // One frame every 2 seconds
-      '-frame_pts', '1',
-      '-q:v', '2',
-      `${outputDir}/frame_%03d.jpg`
+    // Get video duration first
+    const ffprobeProcess = spawn('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      videoPath
     ]);
-    
-    let error = '';
-    
-    ffmpeg.stderr.on('data', (data) => {
-      const output = data.toString();
-      console.log('FFmpeg output:', output);  // Log all FFmpeg output
-      error += output;
+
+    let duration = '';
+    ffprobeProcess.stdout.on('data', (data) => {
+      duration += data.toString();
     });
 
-    ffmpeg.stdout.on('data', (data) => {
-      console.log('FFmpeg stdout:', data.toString());
-    });
-    
-    ffmpeg.on('error', (err) => {
-      console.error('FFmpeg process error:', err);
-      reject(err);
-    });
-    
-    ffmpeg.on('close', (code) => {
-      console.log(`FFmpeg process exited with code ${code}`);
-      
+    ffprobeProcess.on('close', (code) => {
       if (code !== 0) {
-        console.error('FFmpeg error output:', error);
-        return reject(new Error(`FFmpeg process exited with code ${code}: ${error}`));
+        return reject(new Error('Failed to get video duration'));
       }
+
+      const videoDuration = parseFloat(duration);
+      console.log(`Video duration: ${videoDuration} seconds`);
+
+      // Calculate frame extraction rate based on video length
+      // For longer videos, we extract fewer frames to prevent timeouts
+      let fps = 0.5; // Default: 1 frame every 2 seconds
+      if (videoDuration > 600) { // If longer than 10 minutes
+        fps = 0.2; // 1 frame every 5 seconds
+      } else if (videoDuration > 300) { // If longer than 5 minutes
+        fps = 0.33; // 1 frame every 3 seconds
+      }
+
+      console.log(`Using frame rate: ${fps} fps`);
+
+      // Extract frames with progress monitoring
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', videoPath,
+        '-vf', `fps=${fps}`,
+        '-frame_pts', '1',
+        '-progress', 'pipe:1', // Output progress information
+        '-q:v', '2',
+        `${outputDir}/frame_%03d.jpg`
+      ]);
+    
+      let error = '';
+      let progress = '';
+      let lastProgressUpdate = Date.now();
       
-      try {
-        // Get list of generated frames
-        const frames = fs.readdirSync(outputDir)
-          .filter(file => file.endsWith('.jpg'))
-          .sort((a, b) => {
-            // Sort by frame number
-            const aNum = parseInt(a.match(/\d+/)[0]);
-            const bNum = parseInt(b.match(/\d+/)[0]);
-            return aNum - bNum;
-          });
+      ffmpeg.stderr.on('data', (data) => {
+        const output = data.toString();
+        console.log('FFmpeg output:', output);
+        error += output;
+      });
+
+      ffmpeg.stdout.on('data', (data) => {
+        progress += data.toString();
         
-        console.log(`Successfully extracted ${frames.length} frames`);
-        resolve(frames.length);
-      } catch (err) {
-        console.error('Error reading output directory:', err);
+        // Log progress every 5 seconds
+        const now = Date.now();
+        if (now - lastProgressUpdate >= 5000) {
+          console.log('FFmpeg progress:', progress);
+          lastProgressUpdate = now;
+        }
+      });
+    
+      ffmpeg.on('error', (err) => {
+        console.error('FFmpeg process error:', err);
         reject(err);
-      }
+      });
+
+      // Set a timeout based on video duration
+      const timeoutMinutes = Math.max(5, Math.ceil(videoDuration / 60) * 2); // At least 5 minutes, or 2x video duration
+      const timeout = setTimeout(() => {
+        console.error('Frame extraction timed out');
+        ffmpeg.kill('SIGKILL');
+        reject(new Error(`Frame extraction timed out after ${timeoutMinutes} minutes`));
+      }, timeoutMinutes * 60 * 1000);
+    
+      ffmpeg.on('close', (code) => {
+        clearTimeout(timeout);
+        console.log(`FFmpeg process exited with code ${code}`);
+        
+        if (code !== 0) {
+          console.error('FFmpeg error output:', error);
+          return reject(new Error(`FFmpeg process exited with code ${code}: ${error}`));
+        }
+        
+        try {
+          // Get list of generated frames
+          const frames = fs.readdirSync(outputDir)
+            .filter(file => file.endsWith('.jpg'))
+            .sort((a, b) => {
+              const aNum = parseInt(a.match(/\d+/)[0]);
+              const bNum = parseInt(b.match(/\d+/)[0]);
+              return aNum - bNum;
+            });
+          
+          console.log(`Successfully extracted ${frames.length} frames`);
+          resolve(frames.length);
+        } catch (err) {
+          console.error('Error reading output directory:', err);
+          reject(err);
+        }
+      });
     });
   });
 }
