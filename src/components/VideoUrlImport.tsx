@@ -14,44 +14,26 @@ export function VideoUrlImport({ projectId, onVideoImported }: VideoUrlImportPro
   const router = useRouter();
 
   const isValidUrl = (url: string) => {
-    // First try with the URL constructor
     try {
       new URL(url);
       return true;
     } catch (e) {
-      // If that fails, check if it's a valid URL without protocol
-      // and prepend https:// to it
-      if (url.includes('loom.com/')) {
-        try {
-          new URL(`https://${url}`);
-          return true;
-        } catch (e) {
-          return false;
-        }
-      }
+      console.error('URL validation error:', e);
       return false;
     }
   };
 
   const isLoomUrl = (url: string) => {
-    // Use regex to check if it's a valid Loom URL and extract the video ID
-    // Updated to be more permissive with the video ID format
+    // More permissive regex for Loom URLs
     const loomRegex = /loom\.com\/(share|v)\/([a-zA-Z0-9_-]+)/i;
     const match = url.match(loomRegex);
     
-    // If regex fails, try a more manual approach
     if (!match || !match[2]) {
-      if (url.includes('loom.com/share/')) {
-        const parts = url.split('loom.com/share/');
-        if (parts.length > 1) {
-          const manualVideoId = parts[1].split('?')[0].split('#')[0];
-          return manualVideoId && manualVideoId.length >= 5;
-        }
-      }
+      console.error('Loom URL validation failed:', { url, match });
       return false;
     }
     
-    return match[2].length >= 5;
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,6 +53,8 @@ export function VideoUrlImport({ projectId, onVideoImported }: VideoUrlImportPro
       trimmedUrl = `https://${trimmedUrl}`;
     }
 
+    console.log('Processing URL:', trimmedUrl);
+
     if (!isValidUrl(trimmedUrl)) {
       setError('Please enter a valid URL');
       return;
@@ -84,6 +68,7 @@ export function VideoUrlImport({ projectId, onVideoImported }: VideoUrlImportPro
     setIsLoading(true);
 
     try {
+      console.log('Sending request to import video:', trimmedUrl);
       const response = await fetch('/api/import-video-from-url', {
         method: 'POST',
         headers: {
@@ -97,10 +82,12 @@ export function VideoUrlImport({ projectId, onVideoImported }: VideoUrlImportPro
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Import video error:', errorData);
         throw new Error(errorData.error || 'Failed to import video');
       }
 
       const data = await response.json();
+      console.log('Import video success:', data);
       
       // Show success message
       setSuccess('Video import started successfully! Processing in the background...');

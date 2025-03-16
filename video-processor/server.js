@@ -89,9 +89,22 @@ const validateApiKey = (req, res, next) => {
 // Process video endpoint
 app.post('/process', validateApiKey, async (req, res) => {
   const { videoUrl, videoId, projectId } = req.body;
+  let loomApiKey = req.headers['x-loom-api-key'] || process.env.LOOM_API_KEY;
+  
+  // Ensure the Loom API key has the Bearer prefix
+  if (loomApiKey && !loomApiKey.startsWith('Bearer ')) {
+    loomApiKey = `Bearer ${loomApiKey}`;
+  }
+  
+  console.log('Debug - Request headers:', req.headers);
+  console.log('Debug - Loom API Key format:', loomApiKey ? 'Bearer token present' : 'Missing');
   
   if (!videoUrl || !videoId || !projectId) {
     return res.status(400).json({ error: 'Missing required parameters' });
+  }
+  
+  if (!loomApiKey) {
+    return res.status(401).json({ error: 'Loom API key is required' });
   }
   
   console.log(`Processing video: ${videoId} from ${videoUrl}`);
@@ -130,7 +143,7 @@ app.post('/process', validateApiKey, async (req, res) => {
     console.log(`Downloading video from ${videoUrl}`);
     
     try {
-      await downloadVideo(videoUrl, videoPath);
+      await downloadVideo(videoUrl, videoPath, loomApiKey);
       console.log('Video downloaded successfully');
     } catch (downloadError) {
       console.error('Error downloading video:', downloadError);
@@ -223,23 +236,49 @@ app.post('/process', validateApiKey, async (req, res) => {
 });
 
 // Function to get video URL from Loom API
-async function getLoomVideoUrl(loomUrl) {
+async function getLoomVideoUrl(loomUrl, apiKey) {
   try {
     // First get the video ID from the URL
     const videoId = loomUrl.split('/').pop().split('?')[0];
     console.log('Extracted video ID:', videoId);
-
-    // First try to get the video data using the v1 API with proper authentication
-    const videoResponse = await axios.get(`https://www.loom.com/v1/videos/${videoId}`, {
+    
+    // Add detailed API key logging
+    console.log('API Key Check:');
+    console.log('- API Key provided:', !!apiKey);
+    console.log('- API Key length:', apiKey?.length);
+    console.log('- First 5 chars:', apiKey?.substring(0, 5));
+    console.log('- Is Bearer token format:', apiKey?.startsWith('Bearer '));
+    
+    // Ensure API key is in correct format
+    const authHeader = apiKey?.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`;
+    
+    // Log full request details
+    const requestConfig = {
+      url: `https://www.loom.com/v1/videos/${videoId}`,
       headers: {
-        'Authorization': `Bearer ${LOOM_API_KEY}`,
+        'Authorization': authHeader,
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'User-Agent': 'AppAudits-VideoProcessor/1.0'
       }
+    };
+    
+    console.log('Making Loom API request:', {
+      url: requestConfig.url,
+      headers: {
+        ...requestConfig.headers,
+        'Authorization': 'Bearer [REDACTED]' // Don't log full token
+      }
     });
 
-    console.log('Loom API response:', JSON.stringify(videoResponse.data, null, 2));
+    // First try to get the video data using the v1 API with proper authentication
+    const videoResponse = await axios.get(requestConfig.url, {
+      headers: requestConfig.headers
+    });
+
+    console.log('Loom API response status:', videoResponse.status);
+    console.log('Loom API response headers:', videoResponse.headers);
+    console.log('Loom API response data:', JSON.stringify(videoResponse.data, null, 2));
 
     if (!videoResponse.data) {
       throw new Error('No data received from Loom API');
@@ -257,7 +296,7 @@ async function getLoomVideoUrl(loomUrl) {
       // If no direct URL is found, try getting it from the embed URL
       const embedResponse = await axios.get(`https://www.loom.com/v1/oembed?url=${encodeURIComponent(loomUrl)}`, {
         headers: {
-          'Authorization': `Bearer ${LOOM_API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'User-Agent': 'AppAudits-VideoProcessor/1.0'
@@ -283,7 +322,7 @@ async function getLoomVideoUrl(loomUrl) {
       // Make another request to get the video data
       const embedVideoResponse = await axios.get(`https://www.loom.com/v1/videos/${embedVideoId}`, {
         headers: {
-          'Authorization': `Bearer ${LOOM_API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json',
           'User-Agent': 'AppAudits-VideoProcessor/1.0'
@@ -321,15 +360,15 @@ async function getLoomVideoUrl(loomUrl) {
 }
 
 // Download video function
-async function downloadVideo(url, outputPath) {
+async function downloadVideo(url, outputPath, loomApiKey) {
   try {
     // If it's a Loom URL, get the actual download URL
     if (url.includes('loom.com/share/') || url.includes('loom.com/v/')) {
       console.log('Detected Loom URL, getting download URL from API');
-      if (!LOOM_API_KEY) {
+      if (!loomApiKey) {
         throw new Error('LOOM_API_KEY environment variable is not set');
       }
-      url = await getLoomVideoUrl(url);
+      url = await getLoomVideoUrl(url, loomApiKey);
       console.log('Got Loom download URL:', url);
     }
     

@@ -87,6 +87,29 @@ export async function POST(request: Request) {
     }
 
     console.log(`Calling video processor service at ${processorUrl}`);
+    console.log('Environment variables check:');
+    console.log('LOOM_API_KEY present:', !!process.env.LOOM_API_KEY);
+    console.log('LOOM_API_KEY length:', process.env.LOOM_API_KEY?.length);
+    console.log('LOOM_API_KEY format:', process.env.LOOM_API_KEY?.startsWith('Bearer ') ? 'Bearer token' : 'Raw key');
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.VIDEO_PROCESSOR_API_KEY || '',
+      'x-loom-api-key': process.env.LOOM_API_KEY ? `Bearer ${process.env.LOOM_API_KEY}` : ''
+    };
+    
+    console.log('Request configuration:', {
+      url: `${processorUrl}/process`,
+      headers: {
+        ...headers,
+        'x-loom-api-key': '[REDACTED]'
+      },
+      body: {
+        videoUrl: video.source_url,
+        videoId: video.id,
+        projectId: video.project_id
+      }
+    });
 
     // Make the request to the video processor service without awaiting the response
     axios.post(`${processorUrl}/process`, {
@@ -94,12 +117,10 @@ export async function POST(request: Request) {
       videoId: video.id,
       projectId: video.project_id
     }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.VIDEO_PROCESSOR_API_KEY || ''
-      }
+      headers
     }).catch(error => {
       console.error('Error from video processor:', error);
+      console.error('Error response:', error.response?.data);
       // Update video status to error asynchronously
       supabase
         .from('videos')
